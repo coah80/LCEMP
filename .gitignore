@@ -53,7 +53,11 @@ Minecraft.Client/DurangoMedia/
 Minecraft.Client/OrbisMedia/
 Minecraft.Client/PS3Media/
 Minecraft.Client/PSVitaMedia/
-Minecraft.Client/Windows64Media/
+Minecraft.Client/Windows64Media/*
+!Minecraft.Client/Windows64Media/Media/
+Minecraft.Client/Windows64Media/Media/*
+!Minecraft.Client/Windows64Media/Media/skinHDWin.swf
+!Minecraft.Client/Windows64Media/Media/skinWin.swf
 
 # Console package / system data
 Minecraft.Client/PS3_GAME/
@@ -71,6 +75,9 @@ Minecraft.Client/Windows64/GameHDD/
 
 # SWF UI files (Flash-based UI assets)
 *.swf
+
+!Minecraft.Client/Windows64Media/Media/skinHDWin.swf
+!Minecraft.Client/Windows64Media/Media/skinWin.swf
 
 # Arc archives (packed texture/media bundles)
 *.arc
