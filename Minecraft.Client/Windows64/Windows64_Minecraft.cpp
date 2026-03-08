@@ -493,6 +493,35 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					}
 				}
 			}
+#ifdef _WINDOWS64
+			Minecraft* instance = Minecraft::GetInstance();
+			if (!instance)
+				break;
+
+			LocalPlayer* player = instance->localplayers[0].get();
+			if (!player)
+				break;
+
+			int iPad = player->GetXboxPad();
+			if (iPad == 0 && g_KBMInput.IsMouseGrabbed() && g_KBMInput.IsKBMActive())
+			{
+				int dx = g_KBMInput.GetRawDeltaX();
+				int dy = g_KBMInput.GetRawDeltaY();
+				g_KBMInput.ConsumeMouseDelta();
+
+				if (dx != 0 || dy != 0)
+				{
+					float mouseSensitivity = ((float)app.GetGameSettings(iPad, eGameSetting_Sensitivity_InGame)) / 100.0f;
+					float mouseLookScale = 1.0f;
+					float mdx = dx * mouseSensitivity * mouseLookScale;
+					float mdy = -dy * mouseSensitivity * mouseLookScale;
+
+					if (app.GetGameSettings(iPad, eGameSetting_ControlInvertLook))
+						mdy = -mdy;
+						instance->player->turn(mdx, mdy);
+				}
+			}
+#endif
 		}
 		break;
 

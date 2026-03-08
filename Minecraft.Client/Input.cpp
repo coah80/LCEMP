@@ -164,25 +164,6 @@ void Input::tick(LocalPlayer *player)
 
 	player->interpolateTurn(tx* abs(tx)* turnSpeed, ty* abs(ty)* turnSpeed);
 
-#ifdef _WINDOWS64
-	if (iPad == 0 && g_KBMInput.IsMouseGrabbed() && g_KBMInput.IsKBMActive())
-	{
-		int dx = g_KBMInput.GetRawDeltaX();
-		int dy = g_KBMInput.GetRawDeltaY();
-		g_KBMInput.ConsumeMouseDelta();
-		if (dx != 0 || dy != 0)
-		{
-			float mouseSensitivity = ((float)app.GetGameSettings(iPad, eGameSetting_Sensitivity_InGame)) / 100.0f;
-			float mouseLookScale = 5.0f;
-			float mdx = dx * mouseSensitivity * mouseLookScale;
-			float mdy = -dy * mouseSensitivity * mouseLookScale;
-			if (app.GetGameSettings(iPad, eGameSetting_ControlInvertLook))
-				mdy = -mdy;
-			player->interpolateTurn(mdx, mdy);
-		}
-	}
-#endif
-        
     //jumping = controller.isButtonPressed(0);
 
 	unsigned int jump = InputManager.GetValue(iPad, MINECRAFT_ACTION_JUMP);
