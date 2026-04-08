@@ -131,6 +131,9 @@ public:
     // Event dispatch (replaces IggyPlayerDispatchEventRS)
     void dispatchEvent(const std::wstring &eventName, const std::vector<std::wstring> &args = {});
 
+    // Key event (replaces IggyPlayerDispatchEventRS with IggyEvent key events)
+    void handleKeyEvent(bool isDown, int keyCode);
+
     // Properties (replaces ActionScript property access)
     void setProperty(UIValuePath element, const std::wstring &prop, const std::wstring &value);
     std::wstring getProperty(UIValuePath element, const std::wstring &prop);

@@ -290,6 +290,19 @@ void UIMovie::dispatchEvent(const std::wstring &eventName, const std::vector<std
     }
 }
 
+void UIMovie::handleKeyEvent(bool isDown, int keyCode) {
+    // Route key events to focused elements for navigation
+    // The actual game input routing is handled by UIScene::sendInputToMovie
+    // which calls convertGameActionToIggyKeycode and then dispatches via this
+    if (m_externalHandler) {
+        UIExternalCall call;
+        call.functionName = isDown ? L"keyDown" : L"keyUp";
+        call.args.push_back(std::to_wstring(keyCode));
+        call.userData = m_userData;
+        m_externalHandler(call);
+    }
+}
+
 // ===== Property access =====
 
 void UIMovie::setProperty(UIValuePath element, const std::wstring &prop, const std::wstring &value) {
