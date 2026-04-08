@@ -26,100 +26,241 @@ SOFTWARE.
 #include "Renderer.h"
 
 #include <cstring>
+#include <cmath>
 #include <limits>
 
-ID3D11BlendState *Renderer::GetManagedBlendState()
+// ─── Topology / blend / compare mapping ─────────────────────────────────────
+
+VkPrimitiveTopology Renderer::MapTopology(C4JRender::ePrimitiveType type)
 {
-    PROFILER_SCOPE("Renderer::GetManagedBlendState", "GetManagedBlendState", MP_ORCHID1)
-    Context &c = getContext();
-    const D3D11_RENDER_TARGET_BLEND_DESC &rtBlend = c.blendDesc.RenderTarget[0];
-
-    const int key = (rtBlend.BlendEnable ? 1 : 0) | ((static_cast<int>(rtBlend.SrcBlend) & 0x1F) << 1) |
-                    ((static_cast<int>(rtBlend.DestBlend) & 0x1F) << 6) | ((static_cast<int>(rtBlend.RenderTargetWriteMask) & 0x0F) << 11);
-
-    auto it = managedBlendStates.find(key);
-    if (it != managedBlendStates.end())
-        return it->second;
-
-    ID3D11BlendState *state = NULL;
-    m_pDevice->CreateBlendState(&c.blendDesc, &state);
-    managedBlendStates.emplace(key, state);
-    return state;
+    switch (type)
+    {
+    case C4JRender::PRIMITIVE_TYPE_TRIANGLE_LIST:  return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    case C4JRender::PRIMITIVE_TYPE_TRIANGLE_STRIP: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    case C4JRender::PRIMITIVE_TYPE_TRIANGLE_FAN:   return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; // emulated via index buffer
+    case C4JRender::PRIMITIVE_TYPE_QUAD_LIST:      return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; // emulated via index buffer
+    case C4JRender::PRIMITIVE_TYPE_LINE_LIST:      return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    case C4JRender::PRIMITIVE_TYPE_LINE_STRIP:     return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+    default:                                       return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    }
 }
 
-ID3D11DepthStencilState *Renderer::GetManagedDepthStencilState()
+VkBlendFactor Renderer::MapBlendFactor(int factor)
 {
-    PROFILER_SCOPE("Renderer::GetManagedBlendState", "GetManagedDepthStencilState", MP_ORCHID1)
-    Context &c = getContext();
-
-    const int key = (c.depthStencilDesc.DepthEnable ? 2 : 0) | ((static_cast<int>(c.depthStencilDesc.DepthFunc) & 0x0F) << 2) |
-                    (c.depthStencilDesc.DepthWriteMask == D3D11_DEPTH_WRITE_MASK_ALL ? 1 : 0);
-
-    auto it = managedDepthStencilStates.find(key);
-    if (it != managedDepthStencilStates.end())
-        return it->second;
-
-    ID3D11DepthStencilState *state = NULL;
-    m_pDevice->CreateDepthStencilState(&c.depthStencilDesc, &state);
-    managedDepthStencilStates.emplace(key, state);
-    return state;
+    switch (factor)
+    {
+    case GL_ZERO:                    return VK_BLEND_FACTOR_ZERO;
+    case GL_ONE:                     return VK_BLEND_FACTOR_ONE;
+    case GL_SRC_COLOR:               return VK_BLEND_FACTOR_SRC_COLOR;
+    case GL_ONE_MINUS_SRC_COLOR:     return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+    case GL_SRC_ALPHA:               return VK_BLEND_FACTOR_SRC_ALPHA;
+    case GL_ONE_MINUS_SRC_ALPHA:     return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    case GL_DST_ALPHA:               return VK_BLEND_FACTOR_DST_ALPHA;
+    case GL_DST_COLOR:               return VK_BLEND_FACTOR_DST_COLOR;
+    case GL_ONE_MINUS_DST_COLOR:     return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+    case GL_CONSTANT_ALPHA:          return VK_BLEND_FACTOR_CONSTANT_ALPHA;
+    case GL_ONE_MINUS_CONSTANT_ALPHA:return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
+    default:                         return VK_BLEND_FACTOR_ONE;
+    }
 }
 
-ID3D11RasterizerState *Renderer::GetManagedRasterizerState()
+VkCompareOp Renderer::MapCompareOp(int func)
 {
-    PROFILER_SCOPE("Renderer::GetManagedRasterizerState", "GetManagedRasterizerState", MP_ORCHID1)
-    Context &c = getContext();
-
-    const int key = (static_cast<std::uint8_t>(c.rasterizerDesc.DepthBias)) |
-                    (static_cast<std::uint8_t>(static_cast<int>(c.rasterizerDesc.SlopeScaledDepthBias)) << 8) |
-                    ((static_cast<int>(c.rasterizerDesc.CullMode) & 0x03) << 16);
-
-    auto it = managedRasterizerStates.find(key);
-    if (it != managedRasterizerStates.end())
-        return it->second;
-
-    ID3D11RasterizerState *state = NULL;
-    m_pDevice->CreateRasterizerState(&c.rasterizerDesc, &state);
-    managedRasterizerStates.emplace(key, state);
-    return state;
+    switch (func)
+    {
+    case GL_EQUAL:   return VK_COMPARE_OP_EQUAL;
+    case GL_LEQUAL:  return VK_COMPARE_OP_LESS_OR_EQUAL;
+    case GL_GREATER: return VK_COMPARE_OP_GREATER;
+    case GL_GEQUAL:  return VK_COMPARE_OP_GREATER_OR_EQUAL;
+    case GL_ALWAYS:  return VK_COMPARE_OP_ALWAYS;
+    default:         return VK_COMPARE_OP_LESS_OR_EQUAL;
+    }
 }
 
-ID3D11SamplerState *Renderer::GetManagedSamplerState()
-{
-    PROFILER_SCOPE("Renderer::GetManagedSamplerState", "GetManagedSamplerState", MP_ORCHID1)
-    Context &c = getContext();
-    const int key = m_textures[c.textureIdx].samplerParams;
+// ─── Sampler cache ──────────────────────────────────────────────────────────
 
-    auto it = managedSamplerStates.find(key);
-    if (it != managedSamplerStates.end())
+VkSampler Renderer::GetManagedSampler(uint32_t params)
+{
+    PROFILER_SCOPE("Renderer::GetManagedSampler", "GetManagedSampler", MP_ORCHID1)
+
+    auto it = managedSamplers.find(params);
+    if (it != managedSamplers.end())
         return it->second;
 
-    const bool clampU = (key & 0x01) != 0;
-    const bool clampV = (key & 0x02) != 0;
-    const bool linearFilter = (key & 0x04) != 0;
-    const bool mipLinear = (key & 0x08) != 0;
-    const int filterBits = (mipLinear ? 0x08 : 0x00) | (linearFilter ? 0x22 : 0x02);
+    const bool clampU = (params & 0x01) != 0;
+    const bool clampV = (params & 0x02) != 0;
+    const bool linearMin = (params & 0x04) != 0;
+    const bool linearMag = (params & 0x08) != 0;
 
-    D3D11_SAMPLER_DESC desc = {};
-    desc.Filter = static_cast<D3D11_FILTER>(filterBits >> 1);
-    desc.AddressU = clampU ? D3D11_TEXTURE_ADDRESS_CLAMP : D3D11_TEXTURE_ADDRESS_WRAP;
-    desc.AddressV = clampV ? D3D11_TEXTURE_ADDRESS_CLAMP : D3D11_TEXTURE_ADDRESS_WRAP;
-    desc.AddressW = static_cast<D3D11_TEXTURE_ADDRESS_MODE>(3);
-    desc.MipLODBias = 0.0f;
-    desc.MaxAnisotropy = 16;
-    desc.ComparisonFunc = static_cast<D3D11_COMPARISON_FUNC>(1);
-    desc.BorderColor[0] = 0.0f;
-    desc.BorderColor[1] = 0.0f;
-    desc.BorderColor[2] = 0.0f;
-    desc.BorderColor[3] = 0.0f;
-    desc.MinLOD = -(std::numeric_limits<float>::max)();
-    desc.MaxLOD = (std::numeric_limits<float>::max)();
+    VkSamplerCreateInfo samplerInfo = {};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.minFilter = linearMin ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+    samplerInfo.magFilter = linearMag ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+    samplerInfo.mipmapMode = linearMin ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    samplerInfo.addressModeU = clampU ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = clampV ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.mipLodBias = 0.0f;
+    samplerInfo.anisotropyEnable = VK_TRUE;
+    samplerInfo.maxAnisotropy = 16.0f;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_NEVER;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
+    samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
-    ID3D11SamplerState *state = NULL;
-    m_pDevice->CreateSamplerState(&desc, &state);
-    managedSamplerStates.emplace(key, state);
-    return state;
+    VkSampler sampler = VK_NULL_HANDLE;
+    vkCreateSampler(m_device, &samplerInfo, nullptr, &sampler);
+    managedSamplers.emplace(params, sampler);
+    return sampler;
 }
+
+// ─── Pipeline cache ─────────────────────────────────────────────────────────
+
+VkPipeline Renderer::GetOrCreatePipeline(const PipelineStateKey &key)
+{
+    PROFILER_SCOPE("Renderer::GetOrCreatePipeline", "GetOrCreatePipeline", MP_ORCHID1)
+
+    auto it = m_pipelineCache.find(key);
+    if (it != m_pipelineCache.end())
+        return it->second;
+
+    // --- Shader stages ---
+    VkPipelineShaderStageCreateInfo shaderStages[2] = {};
+    shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    shaderStages[0].module = m_vertexShaders[key.vertexType];
+    shaderStages[0].pName = "main";
+    shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shaderStages[1].module = m_pixelShaders[key.pixelShaderType];
+    shaderStages[1].pName = "main";
+
+    // --- Vertex input (empty – provided by vertex buffer bindings set up elsewhere) ---
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+    // --- Input assembly ---
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = static_cast<VkPrimitiveTopology>(key.topology);
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    // --- Viewport / scissor (dynamic state) ---
+    VkPipelineViewportStateCreateInfo viewportState = {};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    // --- Rasterizer ---
+    VkPipelineRasterizationStateCreateInfo rasterizer = {};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+
+    if (!key.rasterizer.cullEnable)
+        rasterizer.cullMode = VK_CULL_MODE_NONE;
+    else
+        rasterizer.cullMode = key.rasterizer.cullCW ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_FRONT_BIT;
+
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.depthBiasEnable = (key.rasterizer.depthBiasConstant != 0.0f || key.rasterizer.depthBiasSlope != 0.0f) ? VK_TRUE : VK_FALSE;
+    rasterizer.depthBiasConstantFactor = key.rasterizer.depthBiasConstant;
+    rasterizer.depthBiasSlopeFactor = key.rasterizer.depthBiasSlope;
+    rasterizer.depthBiasClamp = 0.0f;
+
+    // --- Multisampling ---
+    VkPipelineMultisampleStateCreateInfo multisampling = {};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    // --- Depth / stencil ---
+    VkPipelineDepthStencilStateCreateInfo depthStencil = {};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = key.depthStencil.depthTestEnable ? VK_TRUE : VK_FALSE;
+    depthStencil.depthWriteEnable = key.depthStencil.depthWriteEnable ? VK_TRUE : VK_FALSE;
+    depthStencil.depthCompareOp = MapCompareOp(key.depthStencil.depthFunc);
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = key.depthStencil.stencilEnable ? VK_TRUE : VK_FALSE;
+
+    if (key.depthStencil.stencilEnable)
+    {
+        VkStencilOpState stencilOp = {};
+        stencilOp.failOp = VK_STENCIL_OP_KEEP;
+        stencilOp.passOp = VK_STENCIL_OP_REPLACE;
+        stencilOp.depthFailOp = VK_STENCIL_OP_KEEP;
+        stencilOp.compareOp = MapCompareOp(key.depthStencil.stencilFunc);
+        stencilOp.compareMask = key.depthStencil.stencilFuncMask;
+        stencilOp.writeMask = key.depthStencil.stencilWriteMask;
+        stencilOp.reference = key.depthStencil.stencilRef;
+        depthStencil.front = stencilOp;
+        depthStencil.back = stencilOp;
+    }
+
+    // --- Color blending ---
+    VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+    colorBlendAttachment.blendEnable = key.blend.blendEnable ? VK_TRUE : VK_FALSE;
+    colorBlendAttachment.srcColorBlendFactor = MapBlendFactor(key.blend.srcBlend);
+    colorBlendAttachment.dstColorBlendFactor = MapBlendFactor(key.blend.dstBlend);
+    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.srcAlphaBlendFactor = MapBlendFactor(key.blend.srcBlend);
+    colorBlendAttachment.dstAlphaBlendFactor = MapBlendFactor(key.blend.dstBlend);
+    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    colorBlendAttachment.colorWriteMask = 0;
+    if (key.blend.writeMask & 0x1) colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_R_BIT;
+    if (key.blend.writeMask & 0x2) colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_G_BIT;
+    if (key.blend.writeMask & 0x4) colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_B_BIT;
+    if (key.blend.writeMask & 0x8) colorBlendAttachment.colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending = {};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    // --- Dynamic state ---
+    VkDynamicState dynamicStates[] = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_DEPTH_BIAS,
+        VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+        VK_DYNAMIC_STATE_LINE_WIDTH
+    };
+
+    VkPipelineDynamicStateCreateInfo dynamicState = {};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = sizeof(dynamicStates) / sizeof(dynamicStates[0]);
+    dynamicState.pDynamicStates = dynamicStates;
+
+    // --- Create pipeline ---
+    VkGraphicsPipelineCreateInfo pipelineInfo = {};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = m_pipelineLayout;
+    pipelineInfo.renderPass = m_renderPass;
+    pipelineInfo.subpass = 0;
+
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+    m_pipelineCache.emplace(key, pipeline);
+    return pipeline;
+}
+
+// ─── Fog state ──────────────────────────────────────────────────────────────
 
 void Renderer::StateSetFogEnable(bool enable)
 {
@@ -159,7 +300,33 @@ void Renderer::StateSetFogColour(float red, float green, float blue)
     c.fogColourGreen = green;
 }
 
-void Renderer::UpdateViewportState() {}
+void Renderer::UpdateFogState()
+{
+    PROFILER_SCOPE("Renderer::UpdateFogState", "UpdateFogState", MP_ORCHID1)
+    Context &c = getContext();
+
+    Float4 fogParams = {};
+    if (c.fogEnabled)
+    {
+        if (c.fogMode == 1)
+        {
+            fogParams.x = c.fogFarDistance;
+            fogParams.y = 1.0f / (c.fogFarDistance - c.fogNearDistance);
+            fogParams.z = 1.0f;
+        }
+        else
+        {
+            fogParams.x = c.fogDensity;
+            fogParams.z = 2.0f;
+        }
+    }
+
+    c.vertexUBO.vecFog = fogParams;
+    c.fragmentUBO.fog_colour = Float4(c.fogColourRed, c.fogColourGreen, c.fogColourBlue, 1.0f);
+    c.uniformsDirty = true;
+}
+
+// ─── Lighting state ─────────────────────────────────────────────────────────
 
 void Renderer::StateSetLightingEnable(bool enable)
 {
@@ -169,7 +336,6 @@ void Renderer::StateSetLightingEnable(bool enable)
         c.commandBuffer->SetLightingEnable(enable);
         return;
     }
-
     c.lightingEnabled = enable;
 }
 
@@ -224,267 +390,36 @@ void Renderer::StateSetLightEnable(int light, bool enable)
     c.lightingDirty = true;
 }
 
-void Renderer::StateSetColour(float r, float g, float b, float a)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetColor(r, g, b, a);
-        return;
-    }
-
-    ID3D11DeviceContext *d3d11 = c.m_pDeviceContext;
-    const float colour[4] = {r, g, b, a};
-
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    d3d11->Map(c.m_tintColorBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, colour, sizeof(colour));
-    d3d11->Unmap(c.m_tintColorBuffer, 0);
-}
-
-void Renderer::StateSetDepthMask(bool enable)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetDepthMask(enable);
-        return;
-    }
-
-    c.depthStencilDesc.DepthWriteMask = enable ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
-    c.m_pDeviceContext->OMSetDepthStencilState(GetManagedDepthStencilState(), 0);
-    c.depthWriteEnabled = enable;
-}
-
-void Renderer::StateSetBlendEnable(bool enable)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetBlendEnable(enable);
-        return;
-    }
-
-    c.blendDesc.RenderTarget[0].BlendEnable = enable;
-    c.m_pDeviceContext->OMSetBlendState(GetManagedBlendState(), c.blendFactor, 0xFFFFFFFF);
-}
-
-void Renderer::StateSetBlendFunc(int src, int dst)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetBlendFunc(src, dst);
-        return;
-    }
-
-    c.blendDesc.RenderTarget[0].SrcBlend = static_cast<D3D11_BLEND>(src);
-    c.blendDesc.RenderTarget[0].DestBlend = static_cast<D3D11_BLEND>(dst);
-    c.m_pDeviceContext->OMSetBlendState(GetManagedBlendState(), c.blendFactor, 0xFFFFFFFF);
-}
-
-void Renderer::StateSetBlendFactor(unsigned int colour)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetBlendFactor(colour);
-        return;
-    }
-
-    const float scale = 255.0f;
-    c.blendFactor[0] = static_cast<float>((colour >> 0) & 0xFF) / scale;
-    c.blendFactor[1] = static_cast<float>((colour >> 8) & 0xFF) / scale;
-    c.blendFactor[2] = static_cast<float>((colour >> 16) & 0xFF) / scale;
-    c.blendFactor[3] = static_cast<float>((colour >> 24) & 0xFF) / scale;
-    c.m_pDeviceContext->OMSetBlendState(GetManagedBlendState(), c.blendFactor, 0xFFFFFFFF);
-}
-
-void Renderer::StateSetAlphaFunc(int, float param)
-{
-    Context &c = getContext();
-    c.alphaReference = param;
-
-    const float alpha[4] = {0.0f, 0.0f, 0.0f, c.alphaTestEnabled ? c.alphaReference : 0.0f};
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    c.m_pDeviceContext->Map(c.m_alphaTestBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, alpha, sizeof(alpha));
-    c.m_pDeviceContext->Unmap(c.m_alphaTestBuffer, 0);
-}
-
-void Renderer::StateSetDepthFunc(int func)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetDepthFunc(func);
-        return;
-    }
-
-    c.depthStencilDesc.DepthFunc = static_cast<D3D11_COMPARISON_FUNC>(func);
-    c.m_pDeviceContext->OMSetDepthStencilState(GetManagedDepthStencilState(), 0);
-}
-
-void Renderer::StateSetFaceCull(bool enable)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetFaceCull(enable);
-        return;
-    }
-
-    c.rasterizerDesc.CullMode = enable ? D3D11_CULL_BACK : D3D11_CULL_NONE;
-    c.m_pDeviceContext->RSSetState(GetManagedRasterizerState());
-    c.faceCullEnabled = enable;
-}
-
-void Renderer::StateSetFaceCullCW(bool enable)
-{
-    Context &c = getContext();
-    if (c.faceCullEnabled)
-        c.rasterizerDesc.CullMode = enable ? D3D11_CULL_BACK : D3D11_CULL_FRONT;
-    else
-        c.rasterizerDesc.CullMode = D3D11_CULL_NONE;
-
-    c.m_pDeviceContext->RSSetState(GetManagedRasterizerState());
-}
-
-void Renderer::StateSetLineWidth(float) {}
-
-void Renderer::StateSetWriteEnable(bool red, bool green, bool blue, bool alpha)
-{
-    Context &c = getContext();
-
-    std::uint8_t mask = 0;
-    mask |= red ? 0x1 : 0;
-    mask |= green ? 0x2 : 0;
-    mask |= blue ? 0x4 : 0;
-    mask |= alpha ? 0x8 : 0;
-
-    c.blendDesc.RenderTarget[0].RenderTargetWriteMask = mask;
-    c.m_pDeviceContext->OMSetBlendState(GetManagedBlendState(), c.blendFactor, 0xFFFFFFFF);
-}
-
-void Renderer::StateSetDepthTestEnable(bool enable)
-{
-    Context &c = getContext();
-    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
-    {
-        c.commandBuffer->SetDepthTestEnable(enable);
-        return;
-    }
-
-    c.depthStencilDesc.DepthEnable = enable;
-    c.m_pDeviceContext->OMSetDepthStencilState(GetManagedDepthStencilState(), 0);
-    c.depthTestEnabled = enable;
-}
-
-void Renderer::StateSetAlphaTestEnable(bool enable)
-{
-    Context &c = getContext();
-    c.alphaTestEnabled = enable;
-
-    const float alpha[4] = {0.0f, 0.0f, 0.0f, enable ? c.alphaReference : 0.0f};
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    c.m_pDeviceContext->Map(c.m_alphaTestBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, alpha, sizeof(alpha));
-    c.m_pDeviceContext->Unmap(c.m_alphaTestBuffer, 0);
-}
-
-void Renderer::StateSetDepthSlopeAndBias(float slope, float bias)
-{
-    Context &c = getContext();
-
-    const float scale = 65536.0f;
-    c.rasterizerDesc.DepthBias = static_cast<int>(bias * scale);
-    c.rasterizerDesc.SlopeScaledDepthBias = slope * scale;
-    c.m_pDeviceContext->RSSetState(GetManagedRasterizerState());
-}
-
-void Renderer::UpdateFogState()
-{
-    PROFILER_SCOPE("Renderer::UpdateFogState", "UpdateFogState", MP_ORCHID1)
-    Context &c = getContext();
-    ID3D11DeviceContext *d3d11 = c.m_pDeviceContext;
-
-    float fogParams[4] = {};
-    if (c.fogEnabled)
-    {
-        if (c.fogMode == 1)
-        {
-            fogParams[0] = c.fogFarDistance;
-            fogParams[1] = 1.0f / (c.fogFarDistance - c.fogNearDistance);
-            fogParams[2] = 1.0f;
-        }
-        else
-        {
-            fogParams[0] = c.fogDensity;
-            fogParams[2] = 2.0f;
-        }
-    }
-
-    const float fogColour[4] = {c.fogColourRed, c.fogColourGreen, c.fogColourBlue, 1.0f};
-
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    d3d11->Map(c.m_fogParamsBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, fogParams, sizeof(fogParams));
-    d3d11->Unmap(c.m_fogParamsBuffer, 0);
-
-    d3d11->Map(c.m_fogColourBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, fogColour, sizeof(fogColour));
-    d3d11->Unmap(c.m_fogColourBuffer, 0);
-}
-
-void Renderer::StateSetVertexTextureUV(float u, float v)
-{
-    Context &c = getContext();
-    const float texgen[4] = {u - 1.0f, v - 1.0f, 0.0f, 0.0f};
-
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    c.m_pDeviceContext->Map(c.m_vertexTexcoordBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, texgen, sizeof(texgen));
-    c.m_pDeviceContext->Unmap(c.m_vertexTexcoordBuffer, 0);
-}
-
-void Renderer::UpdateTexGenState()
-{
-    PROFILER_SCOPE("Renderer::UpdateTexGenState", "UpdateTexGenState", MP_ORCHID1)
-    Context &c = getContext();
-
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    c.m_pDeviceContext->Map(c.m_texGenMatricesBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, c.texGenMatrices, sizeof(c.texGenMatrices));
-    c.m_pDeviceContext->Unmap(c.m_texGenMatricesBuffer, 0);
-}
-
 void Renderer::UpdateLightingState()
 {
     PROFILER_SCOPE("Renderer::UpdateLightingState", "UpdateLightingState", MP_ORCHID1)
     Context &c = getContext();
     if (!c.lightingDirty || !c.lightingEnabled)
-    {
         return;
-    }
+
+    Float4 dir0 = c.lightDirection[0];
+    Float4 col0 = c.lightColour[0];
+    Float4 dir1 = c.lightDirection[1];
+    Float4 col1 = c.lightColour[1];
 
     if (!c.lightEnabled[0])
     {
-        std::memset(&c.lightDirection[0], 0, sizeof(c.lightDirection[0]));
-        std::memset(&c.lightColour[0], 0, sizeof(c.lightColour[0]));
+        dir0 = Float4();
+        col0 = Float4();
     }
 
     if (!c.lightEnabled[1])
     {
-        std::memset(&c.lightDirection[1], 0, sizeof(c.lightDirection[1]));
-        std::memset(&c.lightColour[1], 0, sizeof(c.lightColour[1]));
+        dir1 = Float4();
+        col1 = Float4();
     }
 
-    const std::size_t lightingBytes = sizeof(c.lightDirection) + sizeof(c.lightColour) + sizeof(c.lightAmbientColour);
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    c.m_pDeviceContext->Map(c.m_lightingStateBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    std::memcpy(mapped.pData, c.lightDirection, lightingBytes);
-    c.m_pDeviceContext->Unmap(c.m_lightingStateBuffer, 0);
-
+    c.vertexUBO.vecLight0 = dir0;
+    c.vertexUBO.vecLight0Col = col0;
+    c.vertexUBO.vecLight1 = dir1;
+    c.vertexUBO.vecLight1Col = col1;
+    c.vertexUBO.vecLightAmbientCol = c.lightAmbientColour;
+    c.uniformsDirty = true;
     c.lightingDirty = false;
 }
 
@@ -500,15 +435,184 @@ void Renderer::StateSetLightDirection(int light, float x, float y, float z)
         return;
     }
 
-    const std::uint32_t stackIndex = c.stackPos[MATRIX_MODE_MODELVIEW];
-    const DirectX::XMMATRIX &modelView = c.matrixStacks[MATRIX_MODE_MODELVIEW][stackIndex];
-    const DirectX::XMVECTOR direction = DirectX::XMVectorSet(x, y, z, 0.0f);
-    const DirectX::XMVECTOR transformed = DirectX::XMVector3TransformNormal(direction, modelView);
-    const DirectX::XMVECTOR normalized = DirectX::XMVector3Normalize(transformed);
+    // Transform by current modelview matrix and normalize
+    const int stackIndex = c.stackPos[MATRIX_MODE_MODELVIEW];
+    const Mat4x4 &mv = c.matrixStacks[MATRIX_MODE_MODELVIEW][stackIndex];
 
-    DirectX::XMStoreFloat4(&c.lightDirection[light], normalized);
+    // Transform normal (ignore translation row)
+    float tx = mv.m[0][0] * x + mv.m[1][0] * y + mv.m[2][0] * z;
+    float ty = mv.m[0][1] * x + mv.m[1][1] * y + mv.m[2][1] * z;
+    float tz = mv.m[0][2] * x + mv.m[1][2] * y + mv.m[2][2] * z;
+
+    float len = std::sqrt(tx * tx + ty * ty + tz * tz);
+    if (len > 1e-6f)
+    {
+        float invLen = 1.0f / len;
+        tx *= invLen;
+        ty *= invLen;
+        tz *= invLen;
+    }
+
+    c.lightDirection[light] = Float4(tx, ty, tz, 0.0f);
     c.lightingDirty = true;
 }
+
+// ─── Colour / alpha state ───────────────────────────────────────────────────
+
+void Renderer::StateSetColour(float r, float g, float b, float a)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetColor(r, g, b, a);
+        return;
+    }
+
+    c.fragmentUBO.diffuse_colour = Float4(r, g, b, a);
+    c.uniformsDirty = true;
+}
+
+void Renderer::StateSetAlphaFunc(int, float param)
+{
+    Context &c = getContext();
+    c.alphaReference = param;
+    c.fragmentUBO.alphaTestRef = Float4(0.0f, 0.0f, 0.0f, c.alphaTestEnabled ? c.alphaReference : 0.0f);
+    c.uniformsDirty = true;
+}
+
+void Renderer::StateSetAlphaTestEnable(bool enable)
+{
+    Context &c = getContext();
+    c.alphaTestEnabled = enable;
+    c.fragmentUBO.alphaTestRef = Float4(0.0f, 0.0f, 0.0f, enable ? c.alphaReference : 0.0f);
+    c.uniformsDirty = true;
+}
+
+// ─── Depth state ────────────────────────────────────────────────────────────
+
+void Renderer::StateSetDepthMask(bool enable)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetDepthMask(enable);
+        return;
+    }
+    c.depthStencilDesc.depthWriteEnable = enable;
+    c.depthWriteEnabled = enable;
+}
+
+void Renderer::StateSetDepthTestEnable(bool enable)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetDepthTestEnable(enable);
+        return;
+    }
+    c.depthStencilDesc.depthTestEnable = enable;
+    c.depthTestEnabled = enable;
+}
+
+void Renderer::StateSetDepthFunc(int func)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetDepthFunc(func);
+        return;
+    }
+    c.depthStencilDesc.depthFunc = func;
+}
+
+void Renderer::StateSetDepthSlopeAndBias(float slope, float bias)
+{
+    Context &c = getContext();
+    const float scale = 65536.0f;
+    c.rasterizerDesc.depthBiasConstant = bias * scale;
+    c.rasterizerDesc.depthBiasSlope = slope * scale;
+}
+
+// ─── Blend state ────────────────────────────────────────────────────────────
+
+void Renderer::StateSetBlendEnable(bool enable)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetBlendEnable(enable);
+        return;
+    }
+    c.blendDesc.blendEnable = enable;
+}
+
+void Renderer::StateSetBlendFunc(int src, int dst)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetBlendFunc(src, dst);
+        return;
+    }
+    c.blendDesc.srcBlend = src;
+    c.blendDesc.dstBlend = dst;
+}
+
+void Renderer::StateSetBlendFactor(unsigned int colour)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetBlendFactor(colour);
+        return;
+    }
+
+    const float scale = 255.0f;
+    c.blendDesc.blendFactor[0] = static_cast<float>((colour >> 0) & 0xFF) / scale;
+    c.blendDesc.blendFactor[1] = static_cast<float>((colour >> 8) & 0xFF) / scale;
+    c.blendDesc.blendFactor[2] = static_cast<float>((colour >> 16) & 0xFF) / scale;
+    c.blendDesc.blendFactor[3] = static_cast<float>((colour >> 24) & 0xFF) / scale;
+}
+
+void Renderer::StateSetWriteEnable(bool red, bool green, bool blue, bool alpha)
+{
+    Context &c = getContext();
+
+    uint8_t mask = 0;
+    mask |= red   ? 0x1 : 0;
+    mask |= green ? 0x2 : 0;
+    mask |= blue  ? 0x4 : 0;
+    mask |= alpha ? 0x8 : 0;
+
+    c.blendDesc.writeMask = mask;
+}
+
+// ─── Rasterizer state ───────────────────────────────────────────────────────
+
+void Renderer::StateSetFaceCull(bool enable)
+{
+    Context &c = getContext();
+    if (c.commandBuffer != NULL && c.commandBuffer->isActive != 0)
+    {
+        c.commandBuffer->SetFaceCull(enable);
+        return;
+    }
+    c.rasterizerDesc.cullEnable = enable;
+    c.faceCullEnabled = enable;
+}
+
+void Renderer::StateSetFaceCullCW(bool enable)
+{
+    Context &c = getContext();
+    if (c.faceCullEnabled)
+        c.rasterizerDesc.cullCW = enable;
+    else
+        c.rasterizerDesc.cullEnable = false;
+}
+
+void Renderer::StateSetLineWidth(float) {}
+
+// ─── Viewport ───────────────────────────────────────────────────────────────
 
 void Renderer::StateSetViewport(C4JRender::eViewportType viewportType)
 {
@@ -565,84 +669,166 @@ void Renderer::StateSetViewport(C4JRender::eViewportType viewportType)
         break;
     }
 
-    D3D11_VIEWPORT viewport = {};
-    viewport.TopLeftX = x;
-    viewport.TopLeftY = y;
-    viewport.Width = width;
-    viewport.Height = height;
-    viewport.MinDepth = 0.0f;
-    viewport.MaxDepth = 1.0f;
+    VkCommandBuffer cmd = m_drawCommandBuffers[m_currentFrame];
 
-    m_pDeviceContext->RSSetViewports(1, &viewport);
-    m_pDeviceContext->OMSetRenderTargets(1, &renderTargetView, depthStencilView);
+    VkViewport viewport = {};
+    viewport.x = x;
+    viewport.y = y;
+    viewport.width = width;
+    viewport.height = height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset = { static_cast<int32_t>(x), static_cast<int32_t>(y) };
+    scissor.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
+void Renderer::UpdateViewportState()
+{
+    // Viewport is set via dynamic state in StateSetViewport; nothing extra needed per-draw
 }
 
 void Renderer::StateSetEnableViewportClipPlanes(bool) {}
+
+// ─── TexGen ─────────────────────────────────────────────────────────────────
 
 void Renderer::StateSetTexGenCol(int col, float x, float y, float z, float w, bool eyeSpace)
 {
     Context &c = getContext();
 
-    DirectX::XMVECTOR plane = DirectX::XMVectorSet(x, y, z, w);
+    float plane[4] = { x, y, z, w };
+
     if (eyeSpace)
     {
-        DirectX::XMFLOAT4X4 modelView;
-        std::memset(&modelView, 0, sizeof(modelView));
-        std::memcpy(&modelView, MatrixGet(MATRIX_MODE_MODELVIEW), sizeof(modelView));
+        // Inverse-transpose modelview matrix, then transform the plane
+        Mat4x4 mv;
+        std::memcpy(&mv, MatrixGet(MATRIX_MODE_MODELVIEW), sizeof(mv));
 
-        DirectX::XMVECTOR determinant = DirectX::XMVectorZero();
-        const DirectX::XMMATRIX inverse = DirectX::XMMatrixInverse(&determinant, DirectX::XMLoadFloat4x4(&modelView));
-        plane = DirectX::XMVector4Transform(plane, inverse);
+        // Simple 4x4 inverse (for affine transforms)
+        // Build adjugate/cofactor approach – for robustness use a full inverse
+        // Here we use the XMMatrixInverse equivalent: Cramer's rule style
+        // For practical purposes, compute a 4x4 inverse:
+        float inv[16];
+        const float *m = mv.ptr();
+
+        inv[0]  =  m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+        inv[4]  = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+        inv[8]  =  m[4]*m[9]*m[15]  - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+        inv[12] = -m[4]*m[9]*m[14]  + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+        inv[1]  = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+        inv[5]  =  m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+        inv[9]  = -m[0]*m[9]*m[15]  + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+        inv[13] =  m[0]*m[9]*m[14]  - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+        inv[2]  =  m[1]*m[6]*m[15]  - m[1]*m[7]*m[14]  - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7]  - m[13]*m[3]*m[6];
+        inv[6]  = -m[0]*m[6]*m[15]  + m[0]*m[7]*m[14]  + m[4]*m[2]*m[15] - m[4]*m[3]*m[14] - m[12]*m[2]*m[7]  + m[12]*m[3]*m[6];
+        inv[10] =  m[0]*m[5]*m[15]  - m[0]*m[7]*m[13]  - m[4]*m[1]*m[15] + m[4]*m[3]*m[13] + m[12]*m[1]*m[7]  - m[12]*m[3]*m[5];
+        inv[14] = -m[0]*m[5]*m[14]  + m[0]*m[6]*m[13]  + m[4]*m[1]*m[14] - m[4]*m[2]*m[13] - m[12]*m[1]*m[6]  + m[12]*m[2]*m[5];
+        inv[3]  = -m[1]*m[6]*m[11]  + m[1]*m[7]*m[10]  + m[5]*m[2]*m[11] - m[5]*m[3]*m[10] - m[9]*m[2]*m[7]   + m[9]*m[3]*m[6];
+        inv[7]  =  m[0]*m[6]*m[11]  - m[0]*m[7]*m[10]  - m[4]*m[2]*m[11] + m[4]*m[3]*m[10] + m[8]*m[2]*m[7]   - m[8]*m[3]*m[6];
+        inv[11] = -m[0]*m[5]*m[11]  + m[0]*m[7]*m[9]   + m[4]*m[1]*m[11] - m[4]*m[3]*m[9]  - m[8]*m[1]*m[7]   + m[8]*m[3]*m[5];
+        inv[15] =  m[0]*m[5]*m[10]  - m[0]*m[6]*m[9]   - m[4]*m[1]*m[10] + m[4]*m[2]*m[9]  + m[8]*m[1]*m[6]   - m[8]*m[2]*m[5];
+
+        float det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+        if (std::fabs(det) > 1e-6f)
+        {
+            float invDet = 1.0f / det;
+            // Transform plane by inverse matrix (plane = plane * M^-1)
+            float px = plane[0]*inv[0]*invDet + plane[1]*inv[1]*invDet + plane[2]*inv[2]*invDet  + plane[3]*inv[3]*invDet;
+            float py = plane[0]*inv[4]*invDet + plane[1]*inv[5]*invDet + plane[2]*inv[6]*invDet  + plane[3]*inv[7]*invDet;
+            float pz = plane[0]*inv[8]*invDet + plane[1]*inv[9]*invDet + plane[2]*inv[10]*invDet + plane[3]*inv[11]*invDet;
+            float pw = plane[0]*inv[12]*invDet+ plane[1]*inv[13]*invDet+ plane[2]*inv[14]*invDet + plane[3]*inv[15]*invDet;
+            plane[0] = px; plane[1] = py; plane[2] = pz; plane[3] = pw;
+        }
     }
-
-    DirectX::XMFLOAT4 transformed;
-    DirectX::XMStoreFloat4(&transformed, plane);
 
     const int activeSet = eyeSpace ? 0 : 1;
     const int inactiveSet = eyeSpace ? 1 : 0;
 
-    float *active = reinterpret_cast<float *>(&c.texGenMatrices[activeSet]);
-    active[col + 0] = transformed.x;
-    active[col + 4] = transformed.y;
-    active[col + 8] = transformed.z;
-    active[col + 12] = transformed.w;
+    float *active = c.texGenMatrices[activeSet].ptr();
+    active[col + 0]  = plane[0];
+    active[col + 4]  = plane[1];
+    active[col + 8]  = plane[2];
+    active[col + 12] = plane[3];
 
-    float *inactive = reinterpret_cast<float *>(&c.texGenMatrices[inactiveSet]);
-    inactive[col + 0] = 0.0f;
-    inactive[col + 4] = 0.0f;
-    inactive[col + 8] = 0.0f;
+    float *inactive = c.texGenMatrices[inactiveSet].ptr();
+    inactive[col + 0]  = 0.0f;
+    inactive[col + 4]  = 0.0f;
+    inactive[col + 8]  = 0.0f;
     inactive[col + 12] = 0.0f;
 }
 
-void Renderer::StateSetStencil(D3D11_COMPARISON_FUNC function, uint8_t stencil_ref, uint8_t stencil_func_mask, uint8_t stencil_write_mask)
+void Renderer::UpdateTexGenState()
+{
+    PROFILER_SCOPE("Renderer::UpdateTexGenState", "UpdateTexGenState", MP_ORCHID1)
+    Context &c = getContext();
+    c.vertexUBO.matTexGenObj = c.texGenMatrices[1];
+    c.vertexUBO.matTexGenEye = c.texGenMatrices[0];
+    c.uniformsDirty = true;
+}
+
+// ─── Vertex texture UV ──────────────────────────────────────────────────────
+
+void Renderer::StateSetVertexTextureUV(float u, float v)
 {
     Context &c = getContext();
-
-    D3D11_DEPTH_STENCIL_DESC desc = c.depthStencilDesc;
-    desc.StencilEnable = true;
-    desc.StencilReadMask = stencil_func_mask;
-    desc.StencilWriteMask = stencil_write_mask;
-    desc.FrontFace.StencilFunc = function;
-    desc.BackFace.StencilFunc = function;
-
-    ID3D11DepthStencilState *state = NULL;
-    m_pDevice->CreateDepthStencilState(&desc, &state);
-    m_pDeviceContext->OMSetDepthStencilState(state, stencil_ref);
-    if (state != NULL) state->Release();
+    c.vertexUBO.vecUVT2 = Float4(u - 1.0f, v - 1.0f, 0.0f, 0.0f);
+    c.uniformsDirty = true;
 }
+
+// ─── Stencil ────────────────────────────────────────────────────────────────
+
+void Renderer::StateSetStencil(int function, uint8_t stencil_ref, uint8_t stencil_func_mask, uint8_t stencil_write_mask)
+{
+    Context &c = getContext();
+    c.depthStencilDesc.stencilEnable = true;
+    c.depthStencilDesc.stencilRef = stencil_ref;
+    c.depthStencilDesc.stencilFuncMask = stencil_func_mask;
+    c.depthStencilDesc.stencilWriteMask = stencil_write_mask;
+    c.depthStencilDesc.stencilFunc = function;
+}
+
+// ─── Forced LOD ─────────────────────────────────────────────────────────────
 
 void Renderer::StateSetForceLOD(int LOD)
 {
     Context &c = getContext();
     c.forcedLOD = LOD;
+    c.fragmentUBO.forcedLod = Float4(static_cast<float>(LOD), 0.0f, 0.0f, 0.0f);
+    c.uniformsDirty = true;
 }
+
+// ─── Uniform buffer upload ──────────────────────────────────────────────────
+
+void Renderer::UpdateUniformBuffers()
+{
+    PROFILER_SCOPE("Renderer::UpdateUniformBuffers", "UpdateUniformBuffers", MP_ORCHID1)
+    Context &c = getContext();
+    if (!c.uniformsDirty)
+        return;
+
+    std::memcpy(m_vertexUBOMapped[m_currentFrame], &c.vertexUBO, sizeof(VertexUBO));
+    std::memcpy(m_fragmentUBOMapped[m_currentFrame], &c.fragmentUBO, sizeof(FragmentUBO));
+    c.uniformsDirty = false;
+}
+
+// ─── State batch update ─────────────────────────────────────────────────────
 
 void Renderer::StateUpdate()
 {
     PROFILER_SCOPE("Renderer::StateUpdate", "StateUpdate", MP_ORCHID1)
     Context &c = getContext();
-    StateSetFaceCull(c.faceCullEnabled);
-    StateSetDepthMask(c.depthWriteEnabled);
-    StateSetDepthTestEnable(c.depthTestEnabled);
-    StateSetAlphaTestEnable(c.alphaTestEnabled);
+
+    VkCommandBuffer cmd = m_drawCommandBuffers[m_currentFrame];
+
+    // Set dynamic depth bias
+    vkCmdSetDepthBias(cmd, c.rasterizerDesc.depthBiasConstant, 0.0f, c.rasterizerDesc.depthBiasSlope);
+
+    // Set dynamic blend constants
+    vkCmdSetBlendConstants(cmd, c.blendDesc.blendFactor);
+
+    // Set dynamic line width
+    vkCmdSetLineWidth(cmd, c.rasterizerDesc.lineWidth);
 }

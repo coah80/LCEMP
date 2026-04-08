@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <cstdlib>
+#include <vulkan/vulkan.h>
+
 class ImageFileBuffer 
 {
 public:
@@ -26,12 +30,16 @@ typedef struct
 	int Height;
 }D3DXIMAGE_INFO;
 
+#ifndef _WIN32
+typedef uint8_t BYTE;
+typedef uint32_t DWORD;
+#endif
+
 typedef struct _XSOCIAL_PREVIEWIMAGE {
     BYTE *pBytes;
     DWORD Pitch;
     DWORD Width;
     DWORD Height;
-//    D3DFORMAT Format;
 } XSOCIAL_PREVIEWIMAGE, *PXSOCIAL_PREVIEWIMAGE;
 
 class C4JRender
@@ -55,12 +63,12 @@ public:
 	void Set_matrixDirty();
 
 	// Core
-	void Initialise(ID3D11Device *pDevice, IDXGISwapChain *pSwapChain);
+	void Initialise(void *windowHandle, uint32_t width, uint32_t height);
 	void InitialiseContext();
 	void StartFrame();
 	void DoScreenGrabOnNextPresent();
 	void Present();
-	void Clear(int flags, D3D11_RECT *pRect = NULL);
+	void Clear(int flags, VkRect2D *pRect = nullptr);
 	void SetClearColour(const float colourRGBA[4]);
 	bool IsWidescreen();
 	bool IsHiDef();
@@ -75,7 +83,7 @@ public:
 	typedef enum
 	{
 		VERTEX_TYPE_PF3_TF2_CB4_NB4_XW1,		// Position 3 x float, texture 2 x float, colour 4 x byte, normal 4 x byte, padding 1 DWORD
-		VERTEX_TYPE_COMPRESSED,					// Compressed format - see comment at top of VS_PS3_TS2_CS1.hlsl for description of layout
+		VERTEX_TYPE_COMPRESSED,					// Compressed format
 		VERTEX_TYPE_PF3_TF2_CB4_NB4_XW1_LIT,	// as VERTEX_TYPE_PF3_TF2_CB4_NB4_XW1 with lighting applied,
 		VERTEX_TYPE_PF3_TF2_CB4_NB4_XW1_TEXGEN, // as VERTEX_TYPE_PF3_TF2_CB4_NB4_XW1 with tex gen
 		VERTEX_TYPE_COUNT
@@ -115,7 +123,7 @@ public:
 	} ePrimitiveType;
 
 	void DrawVertices(ePrimitiveType PrimitiveType, int count, void *dataIn, eVertexType vType, C4JRender::ePixelShaderType psType);
-	void DrawVertexBuffer(ePrimitiveType PrimitiveType, int count, ID3D11Buffer *buffer, C4JRender::eVertexType vType, C4JRender::ePixelShaderType psType);
+	void DrawVertexBuffer(ePrimitiveType PrimitiveType, int count, VkBuffer buffer, C4JRender::eVertexType vType, C4JRender::ePixelShaderType psType);
 
 	// Command buffers
 	void CBuffLockStaticCreations();
@@ -133,11 +141,6 @@ public:
 	typedef enum
 	{
 		TEXTURE_FORMAT_RxGyBzAw,		// Normal 32-bit RGBA texture, 8 bits per component
-		/* Don't think these are all directly available on D3D 11 - leaving for now
-		TEXTURE_FORMAT_R0G0B0Ax,		// One 8-bit component mapped to alpha channel, R=G=B=0
-		TEXTURE_FORMAT_R1G1B1Ax,		// One 8-bit component mapped to alpha channel, R=G=B=1
-		TEXTURE_FORMAT_RxGxBxAx,		// One 8-bit component mapped to all channels
-		*/
 		MAX_TEXTURE_FORMATS
 	} eTextureFormat;
 
@@ -153,12 +156,12 @@ public:
 	void TextureSetParam(int param, int value);
 	void TextureDynamicUpdateStart();
 	void TextureDynamicUpdateEnd();
-	HRESULT LoadTextureData(const char *szFilename,D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
-	HRESULT LoadTextureData(BYTE *pbData, DWORD dwBytes,D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
-	HRESULT SaveTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int *ppDataOut);
-	HRESULT SaveTextureDataToMemory(void *pOutput, int outputCapacity, int *outputLength, int width, int height, int *ppDataIn);
+	int LoadTextureData(const char *szFilename,D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
+	int LoadTextureData(BYTE *pbData, DWORD dwBytes,D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
+	int SaveTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int *ppDataOut);
+	int SaveTextureDataToMemory(void *pOutput, int outputCapacity, int *outputLength, int width, int height, int *ppDataIn);
 	void TextureGetStats();
-	ID3D11ShaderResourceView  *TextureGetTexture(int idx);
+	VkImageView TextureGetTexture(int idx);
 
 	// State control
 	void StateSetColour(float r, float g, float b, float a);
@@ -194,7 +197,7 @@ public:
 	void StateSetForceLOD(int LOD);
 
 	// Event tracking
-	void BeginEvent(LPCWSTR eventName);
+	void BeginEvent(const wchar_t *eventName);
 	void EndEvent();
 
 	// PLM event handling
@@ -203,14 +206,12 @@ public:
 	void Resume();
 };
 
-
+// GL-style constants (platform-independent values)
 const int GL_MODELVIEW_MATRIX = 0;
 const int GL_PROJECTION_MATRIX = 1;
 const int GL_MODELVIEW = 0;
 const int GL_PROJECTION = 1;
 const int GL_TEXTURE = 2;
-
-// These things required for tex gen
 
 const int GL_S = 0;
 const int GL_T = 1;
@@ -228,8 +229,6 @@ const int GL_EYE_LINEAR = 1;
 const int GL_OBJECT_PLANE = 0;
 const int GL_EYE_PLANE = 1;
 
-
-// These things are used by glEnable/glDisable so must be different and non-zero (zero is used by things we haven't assigned yet)
 const int GL_TEXTURE_2D = 1;
 const int GL_BLEND = 2;
 const int GL_CULL_FACE = 3;
@@ -246,23 +245,25 @@ const int CLEAR_COLOUR_FLAG = 2;
 const int GL_DEPTH_BUFFER_BIT = CLEAR_DEPTH_FLAG;
 const int GL_COLOR_BUFFER_BIT = CLEAR_COLOUR_FLAG;
 
-const int GL_SRC_ALPHA = D3D11_BLEND_SRC_ALPHA;
-const int GL_ONE_MINUS_SRC_ALPHA = D3D11_BLEND_INV_SRC_ALPHA;
-const int GL_ONE = D3D11_BLEND_ONE;
-const int GL_ZERO = D3D11_BLEND_ZERO;
-const int GL_DST_ALPHA = D3D11_BLEND_DEST_ALPHA;
-const int GL_SRC_COLOR = D3D11_BLEND_SRC_COLOR;
-const int GL_DST_COLOR = D3D11_BLEND_DEST_COLOR;
-const int GL_ONE_MINUS_DST_COLOR = D3D11_BLEND_INV_DEST_COLOR;
-const int GL_ONE_MINUS_SRC_COLOR = D3D11_BLEND_INV_SRC_COLOR;
-const int GL_CONSTANT_ALPHA = D3D11_BLEND_BLEND_FACTOR;
-const int GL_ONE_MINUS_CONSTANT_ALPHA = D3D11_BLEND_INV_BLEND_FACTOR;
+// Blend factors (platform-independent numeric values)
+const int GL_SRC_ALPHA = 5;
+const int GL_ONE_MINUS_SRC_ALPHA = 6;
+const int GL_ONE = 1;
+const int GL_ZERO = 0;
+const int GL_DST_ALPHA = 7;
+const int GL_SRC_COLOR = 3;
+const int GL_DST_COLOR = 9;
+const int GL_ONE_MINUS_DST_COLOR = 10;
+const int GL_ONE_MINUS_SRC_COLOR = 4;
+const int GL_CONSTANT_ALPHA = 14;
+const int GL_ONE_MINUS_CONSTANT_ALPHA = 15;
 
-const int GL_GREATER = D3D11_COMPARISON_GREATER;
-const int GL_EQUAL = D3D11_COMPARISON_EQUAL;
-const int GL_LEQUAL = D3D11_COMPARISON_LESS_EQUAL;
-const int GL_GEQUAL = D3D11_COMPARISON_GREATER_EQUAL;
-const int GL_ALWAYS = D3D11_COMPARISON_ALWAYS;
+// Comparison functions (platform-independent numeric values)
+const int GL_GREATER = 5;
+const int GL_EQUAL = 3;
+const int GL_LEQUAL = 4;
+const int GL_GEQUAL = 6;
+const int GL_ALWAYS = 8;
 
 const int GL_TEXTURE_MIN_FILTER = 1;
 const int GL_TEXTURE_MAG_FILTER = 2;
@@ -272,7 +273,7 @@ const int GL_TEXTURE_WRAP_T = 4;
 const int GL_NEAREST = 0;
 const int GL_LINEAR = 1;
 const int GL_EXP = 2;
-const int GL_NEAREST_MIPMAP_LINEAR = 0;	// TODO - mipmapping bit of this
+const int GL_NEAREST_MIPMAP_LINEAR = 0;
 
 const int GL_CLAMP = 0;
 const int GL_REPEAT = 1;
@@ -298,5 +299,3 @@ const int GL_TRIANGLE_STRIP = C4JRender::PRIMITIVE_TYPE_TRIANGLE_STRIP;
 
 // Singleton
 extern C4JRender RenderManager;
-
-

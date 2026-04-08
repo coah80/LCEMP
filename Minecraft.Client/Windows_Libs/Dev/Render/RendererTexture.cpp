@@ -26,25 +26,25 @@ SOFTWARE.
 #include "Renderer.h"
 #include "libpng/png.h"
 
-unsigned char* dataStart;
-unsigned char *dataCurr;
-unsigned char *dataEnd;
+static unsigned char *dataStart;
+static unsigned char *dataCurr;
+static unsigned char *dataEnd;
 
-DXGI_FORMAT Renderer::textureFormats[] = { DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN };
+VkFormat Renderer::textureFormats[] = { VK_FORMAT_R8G8B8A8_UNORM };
 
-void user_write_data_init(unsigned char* pBuffer, int size)
+static void user_write_data_init(unsigned char *pBuffer, int size)
 {
     dataStart = pBuffer;
     dataCurr = pBuffer;
     dataEnd = pBuffer + size;
 }
 
-int user_write_data_bytes_written()
+static int user_write_data_bytes_written()
 {
     return static_cast<int>(dataCurr - dataStart);
 }
 
-void user_write_data(png_struct_def* png_ptr, unsigned char* src, size_t length)
+static void user_write_data(png_struct_def *png_ptr, unsigned char *src, size_t length)
 {
     int bytesToWrite = static_cast<int>(dataEnd - dataCurr);
     if (static_cast<int>(length) < bytesToWrite)
@@ -54,9 +54,8 @@ void user_write_data(png_struct_def* png_ptr, unsigned char* src, size_t length)
     dataCurr += bytesToWrite;
 }
 
-void user_flush_data(png_struct_def* png_ptr)
+static void user_flush_data(png_struct_def *png_ptr)
 {
-    // TODO(3UR): this is for a different platform? it's empty in Render_PC.lib but not Render.lib
 }
 
 int Renderer::TextureCreate()
@@ -66,10 +65,15 @@ int Renderer::TextureCreate()
     {
         if (!m_textures[i].allocated)
         {
-            m_textures[i].texture = NULL;
+            m_textures[i].image = {};
+            m_textures[i].view = VK_NULL_HANDLE;
+            m_textures[i].sampler = VK_NULL_HANDLE;
             m_textures[i].allocated = true;
             m_textures[i].mipLevels = 1;
             m_textures[i].textureFormat = 0;
+            m_textures[i].width = 0;
+            m_textures[i].height = 0;
+            m_textures[i].samplerParams = 0;
             return i;
         }
     }
@@ -79,15 +83,15 @@ int Renderer::TextureCreate()
 void Renderer::TextureFree(int idx)
 {
     PROFILER_SCOPE("Renderer::TextureFree", "TextureFree", MP_PURPLE4)
-    if (m_textures[idx].texture)
+    if (m_textures[idx].view != VK_NULL_HANDLE)
     {
-        m_textures[idx].texture->Release();
-        m_textures[idx].texture = NULL;
+        vkDestroyImageView(m_device, m_textures[idx].view, nullptr);
+        m_textures[idx].view = VK_NULL_HANDLE;
     }
-    if (m_textures[idx].view)
+    if (m_textures[idx].image.image != VK_NULL_HANDLE)
     {
-        m_textures[idx].view->Release();
-        m_textures[idx].view = NULL;
+        vmaDestroyImage(m_allocator, m_textures[idx].image.image, m_textures[idx].image.allocation);
+        m_textures[idx].image = {};
     }
     m_textures[idx].allocated = false;
 }
@@ -98,14 +102,12 @@ void Renderer::TextureBind(int idx)
     if (idx == -1)
         idx = defaultTextureIndex;
 
-    Context& c = getContext();
+    Context &c = getContext();
 
     if (c.commandBuffer && c.commandBuffer->isActive)
         c.commandBuffer->BindTexture(idx);
 
     c.textureIdx = idx;
-    c.m_pDeviceContext->PSSetShaderResources(0, 1, &m_textures[idx].view);
-
     UpdateTextureState(false);
 }
 
@@ -115,93 +117,194 @@ void Renderer::TextureBindVertex(int idx)
     if (idx == -1)
         idx = defaultTextureIndex;
 
-    Context& c = getContext();
-
+    Context &c = getContext();
     c.textureIdx = idx;
-    c.m_pDeviceContext->VSSetShaderResources(0, 1, &m_textures[idx].view);
-
     UpdateTextureState(true);
 }
 
 void Renderer::TextureSetTextureLevels(int levels)
 {
-    Context& c = getContext();
+    Context &c = getContext();
     m_textures[c.textureIdx].mipLevels = levels;
 }
 
 int Renderer::TextureGetTextureLevels()
 {
-    Context& c = getContext();
+    Context &c = getContext();
     return m_textures[c.textureIdx].mipLevels;
 }
 
-void Renderer::TextureData(int width, int height, void* data, int level, C4JRender::eTextureFormat format)
+void Renderer::TextureData(int width, int height, void *data, int level, C4JRender::eTextureFormat format)
 {
     PROFILER_SCOPE("Renderer::TextureData", "TextureData", MP_PURPLE4)
-    Context& c = getContext();
+    Context &c = getContext();
     int idx = c.textureIdx;
 
     m_textures[idx].textureFormat = format;
+    const VkFormat vkFormat = textureFormats[format];
 
     if (level == 0)
     {
-        D3D11_TEXTURE2D_DESC desc;
-        desc.Width = width;
-        desc.Height = height;
-        desc.MipLevels = m_textures[idx].mipLevels;
-        desc.ArraySize = 1;
-        desc.Format = textureFormats[format];
-        desc.SampleDesc.Count = 1;
-        desc.SampleDesc.Quality = 0;
-        desc.Usage = D3D11_USAGE_DEFAULT;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.CPUAccessFlags = 0;
-        desc.MiscFlags = 0;
+        // Destroy previous image if it exists
+        if (m_textures[idx].view != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(m_device, m_textures[idx].view, nullptr);
+            m_textures[idx].view = VK_NULL_HANDLE;
+        }
+        if (m_textures[idx].image.image != VK_NULL_HANDLE)
+        {
+            vmaDestroyImage(m_allocator, m_textures[idx].image.image, m_textures[idx].image.allocation);
+            m_textures[idx].image = {};
+        }
 
-        m_pDevice->CreateTexture2D(&desc, NULL, &m_textures[idx].texture);
-        m_pDevice->CreateShaderResourceView(m_textures[idx].texture, NULL, &m_textures[idx].view);
+        m_textures[idx].width = width;
+        m_textures[idx].height = height;
+
+        // Create VkImage
+        VkImageCreateInfo imageInfo = {};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = vkFormat;
+        imageInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+        imageInfo.mipLevels = m_textures[idx].mipLevels;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VmaAllocationCreateInfo allocInfo = {};
+        allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+        vmaCreateImage(m_allocator, &imageInfo, &allocInfo, &m_textures[idx].image.image, &m_textures[idx].image.allocation, nullptr);
+
+        // Create VkImageView
+        VkImageViewCreateInfo viewInfo = {};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = m_textures[idx].image.image;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = vkFormat;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = m_textures[idx].mipLevels;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+
+        vkCreateImageView(m_device, &viewInfo, nullptr, &m_textures[idx].view);
     }
 
-    c.m_pDeviceContext->UpdateSubresource(
-        m_textures[idx].texture, 
-        level, 
-        NULL, 
-        data, 
-        static_cast<UINT>(width * 4),
-        static_cast<UINT>(width * height * 4)
-    );
+    // Upload pixel data via staging buffer
+    if (data != nullptr)
+    {
+        const uint32_t mipWidth = static_cast<uint32_t>(width);
+        const uint32_t mipHeight = static_cast<uint32_t>(height);
+        const VkDeviceSize imageSize = static_cast<VkDeviceSize>(mipWidth) * mipHeight * 4;
+
+        // Create staging buffer
+        VkBufferCreateInfo stagingBufInfo = {};
+        stagingBufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        stagingBufInfo.size = imageSize;
+        stagingBufInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        stagingBufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo stagingAllocInfo = {};
+        stagingAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+
+        VkAllocatedBuffer stagingBuffer = {};
+        vmaCreateBuffer(m_allocator, &stagingBufInfo, &stagingAllocInfo, &stagingBuffer.buffer, &stagingBuffer.allocation, nullptr);
+
+        void *mapped;
+        vmaMapMemory(m_allocator, stagingBuffer.allocation, &mapped);
+        std::memcpy(mapped, data, imageSize);
+        vmaUnmapMemory(m_allocator, stagingBuffer.allocation);
+
+        // Transition, copy, transition
+        TransitionImageLayout(m_textures[idx].image.image, vkFormat,
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, m_textures[idx].mipLevels);
+
+        VkCommandBuffer cmd = BeginSingleTimeCommands();
+
+        VkBufferImageCopy region = {};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = level;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = { 0, 0, 0 };
+        region.imageExtent = { mipWidth, mipHeight, 1 };
+
+        vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, m_textures[idx].image.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+        EndSingleTimeCommands(cmd);
+
+        TransitionImageLayout(m_textures[idx].image.image, vkFormat,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_textures[idx].mipLevels);
+
+        vmaDestroyBuffer(m_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
+    }
 }
 
-void Renderer::TextureDataUpdate(int xoffset, int yoffset, int width, int height, void* data, int level)
+void Renderer::TextureDataUpdate(int xoffset, int yoffset, int width, int height, void *data, int level)
 {
     PROFILER_SCOPE("Renderer::TextureDataUpdate", "TextureDataUpdate", MP_PURPLE4)
-    Context& c = getContext();
+    Context &c = getContext();
     int idx = c.textureIdx;
 
-    D3D11_TEXTURE2D_DESC desc;
-    m_textures[idx].texture->GetDesc(&desc);
+    const VkFormat vkFormat = textureFormats[m_textures[idx].textureFormat];
+    const VkDeviceSize imageSize = static_cast<VkDeviceSize>(width) * height * 4;
 
-    D3D11_BOX box;
-    box.left = xoffset;
-    box.top = yoffset;
-    box.right = xoffset + width;
-    box.bottom = yoffset + height;
-    box.front = 0;
-    box.back = 1;
+    // Create staging buffer
+    VkBufferCreateInfo stagingBufInfo = {};
+    stagingBufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    stagingBufInfo.size = imageSize;
+    stagingBufInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    stagingBufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    c.m_pDeviceContext->UpdateSubresource(
-        m_textures[idx].texture,
-        level,
-        &box,
-        data,
-        static_cast<UINT>(width * 4),
-        static_cast<UINT>(width * height * 4)
-    );
+    VmaAllocationCreateInfo stagingAllocInfo = {};
+    stagingAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+
+    VkAllocatedBuffer stagingBuffer = {};
+    vmaCreateBuffer(m_allocator, &stagingBufInfo, &stagingAllocInfo, &stagingBuffer.buffer, &stagingBuffer.allocation, nullptr);
+
+    void *mapped;
+    vmaMapMemory(m_allocator, stagingBuffer.allocation, &mapped);
+    std::memcpy(mapped, data, imageSize);
+    vmaUnmapMemory(m_allocator, stagingBuffer.allocation);
+
+    TransitionImageLayout(m_textures[idx].image.image, vkFormat,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, m_textures[idx].mipLevels);
+
+    VkCommandBuffer cmd = BeginSingleTimeCommands();
+
+    VkBufferImageCopy region = {};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = level;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = { xoffset, yoffset, 0 };
+    region.imageExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+
+    vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, m_textures[idx].image.image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    EndSingleTimeCommands(cmd);
+
+    TransitionImageLayout(m_textures[idx].image.image, vkFormat,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_textures[idx].mipLevels);
+
+    vmaDestroyBuffer(m_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 }
 
 void Renderer::TextureSetParam(int param, int value)
 {
-    Context& c = getContext();
+    Context &c = getContext();
     int idx = c.textureIdx;
 
     switch (param)
@@ -231,26 +334,22 @@ void Renderer::TextureSetParam(int param, int value)
 
 void Renderer::TextureDynamicUpdateStart()
 {
-    // TODO(3UR): this is for a different platform? it's empty in Render_PC.lib but not Render.lib
 }
 
 void Renderer::TextureDynamicUpdateEnd()
 {
-    // TODO(3UR): this is for a different platform? it's empty in Render_PC.lib but not Render.lib
 }
 
 void Renderer::UpdateTextureState(bool bVertex)
 {
-    Context& c = getContext();
-    ID3D11SamplerState* pSampler = GetManagedSamplerState();
-
-    if (bVertex)
-        c.m_pDeviceContext->VSSetSamplers(0, 1, &pSampler);
-    else
-        c.m_pDeviceContext->PSSetSamplers(0, 1, &pSampler);
+    Context &c = getContext();
+    VkSampler sampler = GetManagedSampler(m_textures[c.textureIdx].samplerParams);
+    m_textures[c.textureIdx].sampler = sampler;
+    // Descriptor set update is deferred until draw time in UpdateUniformBuffers
+    c.uniformsDirty = true;
 }
 
-HRESULT Renderer::LoadTextureData(const char* szFilename, D3DXIMAGE_INFO* pSrcInfo, int** ppDataOut)
+int Renderer::LoadTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut)
 {
     PROFILER_SCOPE("Renderer::LoadTextureData_File", "LoadTextureData_File", MP_PURPLE4)
     png_image image;
@@ -260,10 +359,6 @@ HRESULT Renderer::LoadTextureData(const char* szFilename, D3DXIMAGE_INFO* pSrcIn
     if (!png_image_begin_read_from_file(&image, szFilename))
         return -1;
 
-    // TODO(3UR): why crash?
-    //if ((image.format & 3u) > 1)
-    //    return -1;
-
     image.format = PNG_FORMAT_BGRA;
 
     *ppDataOut = new int[image.width * image.height];
@@ -272,10 +367,10 @@ HRESULT Renderer::LoadTextureData(const char* szFilename, D3DXIMAGE_INFO* pSrcIn
 
     pSrcInfo->Width = image.width;
     pSrcInfo->Height = image.height;
-    return S_OK;
+    return 0;
 }
 
-HRESULT Renderer::LoadTextureData(BYTE* pbData, DWORD dwBytes, D3DXIMAGE_INFO* pSrcInfo, int** ppDataOut)
+int Renderer::LoadTextureData(uint8_t *pbData, uint32_t dwBytes, D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut)
 {
     PROFILER_SCOPE("Renderer::LoadTextureData_Memory", "LoadTextureData_Memory", MP_PURPLE4)
     png_image image;
@@ -285,10 +380,6 @@ HRESULT Renderer::LoadTextureData(BYTE* pbData, DWORD dwBytes, D3DXIMAGE_INFO* p
     if (!png_image_begin_read_from_memory(&image, pbData, dwBytes))
         return -1;
 
-    // TODO(3UR): why crash?
-    //if ((image.format & 3u) > 1)
-    //    return -1;
-
     image.format = PNG_FORMAT_BGRA;
 
     *ppDataOut = new int[image.width * image.height];
@@ -297,10 +388,10 @@ HRESULT Renderer::LoadTextureData(BYTE* pbData, DWORD dwBytes, D3DXIMAGE_INFO* p
 
     pSrcInfo->Width = image.width;
     pSrcInfo->Height = image.height;
-    return S_OK;
+    return 0;
 }
 
-HRESULT Renderer::SaveTextureData(const char* szFilename, D3DXIMAGE_INFO* pSrcInfo, int* ppDataOut)
+int Renderer::SaveTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int *ppDataOut)
 {
     PROFILER_SCOPE("Renderer::SaveTextureData", "SaveTextureData", MP_PURPLE4)
     png_image image;
@@ -311,10 +402,10 @@ HRESULT Renderer::SaveTextureData(const char* szFilename, D3DXIMAGE_INFO* pSrcIn
     image.format = PNG_FORMAT_BGRA;
 
     png_image_write_to_file(&image, szFilename, 0, ppDataOut, 0, NULL);
-    return S_OK;
+    return 0;
 }
 
-HRESULT Renderer::SaveTextureDataToMemory(void* pOutput, int outputCapacity, int* outputLength, int width, int height, int* ppDataIn)
+int Renderer::SaveTextureDataToMemory(void *pOutput, int outputCapacity, int *outputLength, int width, int height, int *ppDataIn)
 {
     PROFILER_SCOPE("Renderer::SaveTextureDataToMemory", "SaveTextureDataToMemory", MP_PURPLE4)
     png_image image;
@@ -324,27 +415,26 @@ HRESULT Renderer::SaveTextureDataToMemory(void* pOutput, int outputCapacity, int
     image.version = PNG_IMAGE_VERSION;
     image.format = PNG_FORMAT_RGBA;
 
-    dataEnd = (BYTE*)pOutput + outputCapacity;
-    dataStart = (BYTE*)pOutput;
-    dataCurr = (BYTE*)pOutput;
+    dataEnd = static_cast<unsigned char *>(pOutput) + outputCapacity;
+    dataStart = static_cast<unsigned char *>(pOutput);
+    dataCurr = static_cast<unsigned char *>(pOutput);
 
     png_image_write_to_stdio(&image, NULL, 0, ppDataIn, 0, NULL, user_write_data, user_flush_data);
 
     *outputLength = static_cast<int>(dataCurr - dataStart);
-    return S_OK;
+    return 0;
 }
 
 void Renderer::TextureGetStats()
 {
-    // TODO(3UR): this is for a different platform? it's empty in Render_PC.lib but not Render.lib
 }
 
-ID3D11ShaderResourceView* Renderer::TextureGetTexture(int idx)
+VkImageView Renderer::TextureGetTexture(int idx)
 {
-    if ((unsigned int)idx <= 511)
+    if (static_cast<unsigned int>(idx) <= 511)
     {
         if (m_textures[idx].allocated)
             return m_textures[idx].view;
     }
-    return NULL;
+    return VK_NULL_HANDLE;
 }

@@ -26,8 +26,14 @@ SOFTWARE.
 #include "4J_Render.h"
 #include "Profiler.h"
 #include <cstdint>
+#include <cstring>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
+#include <array>
+
+#include <vulkan/vulkan.h>
+#include "vk_mem_alloc.h"
 
 #define MATRIX_MODE_MODELVIEW            0
 #define MATRIX_MODE_MODELVIEW_PROJECTION 1
@@ -42,6 +48,161 @@ SOFTWARE.
 
 #define NUM_COMMAND_HANDLES 0x800000
 #define MAX_COMMAND_BUFFERS 16000
+
+#define VK_MAX_FRAMES_IN_FLIGHT 2
+
+// Cross-platform math types replacing DirectXMath
+struct alignas(16) Mat4x4 {
+    float m[4][4];
+
+    Mat4x4() { memset(m, 0, sizeof(m)); }
+
+    static Mat4x4 Identity() {
+        Mat4x4 r;
+        r.m[0][0] = r.m[1][1] = r.m[2][2] = r.m[3][3] = 1.0f;
+        return r;
+    }
+
+    float *ptr() { return &m[0][0]; }
+    const float *ptr() const { return &m[0][0]; }
+
+    Mat4x4 operator*(const Mat4x4 &rhs) const {
+        Mat4x4 r;
+        for (int i = 0; i < 4; i++)
+            for (int j = 0; j < 4; j++) {
+                r.m[i][j] = 0.0f;
+                for (int k = 0; k < 4; k++)
+                    r.m[i][j] += m[i][k] * rhs.m[k][j];
+            }
+        return r;
+    }
+};
+
+struct Float4 {
+    float x, y, z, w;
+    Float4() : x(0), y(0), z(0), w(0) {}
+    Float4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+};
+
+// Vulkan buffer with VMA allocation
+struct VkAllocatedBuffer {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+};
+
+// Vulkan image with VMA allocation
+struct VkAllocatedImage {
+    VkImage image = VK_NULL_HANDLE;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+};
+
+// Blend state description matching D3D11 semantics
+struct BlendStateDesc {
+    bool blendEnable = false;
+    int srcBlend = 1;   // VK_BLEND_FACTOR_ONE
+    int dstBlend = 0;   // VK_BLEND_FACTOR_ZERO
+    uint8_t writeMask = 0xF; // RGBA
+    float blendFactor[4] = {0, 0, 0, 0};
+
+    bool operator==(const BlendStateDesc &o) const {
+        return blendEnable == o.blendEnable && srcBlend == o.srcBlend &&
+               dstBlend == o.dstBlend && writeMask == o.writeMask;
+    }
+};
+
+// Depth/stencil state description
+struct DepthStencilStateDesc {
+    bool depthTestEnable = true;
+    bool depthWriteEnable = true;
+    int depthFunc = 4; // LESS_EQUAL
+    bool stencilEnable = false;
+    uint8_t stencilRef = 0;
+    uint8_t stencilFuncMask = 0xFF;
+    uint8_t stencilWriteMask = 0xFF;
+    int stencilFunc = 8; // ALWAYS
+
+    bool operator==(const DepthStencilStateDesc &o) const {
+        return depthTestEnable == o.depthTestEnable && depthWriteEnable == o.depthWriteEnable &&
+               depthFunc == o.depthFunc && stencilEnable == o.stencilEnable &&
+               stencilRef == o.stencilRef && stencilFunc == o.stencilFunc;
+    }
+};
+
+// Rasterizer state description
+struct RasterizerStateDesc {
+    bool cullEnable = false;
+    bool cullCW = false; // false=CCW, true=CW
+    float depthBiasSlope = 0.0f;
+    float depthBiasConstant = 0.0f;
+    float lineWidth = 1.0f;
+
+    bool operator==(const RasterizerStateDesc &o) const {
+        return cullEnable == o.cullEnable && cullCW == o.cullCW &&
+               depthBiasSlope == o.depthBiasSlope && depthBiasConstant == o.depthBiasConstant;
+    }
+};
+
+// Pipeline state key for caching
+struct PipelineStateKey {
+    uint32_t vertexType;
+    uint32_t pixelShaderType;
+    uint32_t topology;
+    BlendStateDesc blend;
+    DepthStencilStateDesc depthStencil;
+    RasterizerStateDesc rasterizer;
+
+    bool operator==(const PipelineStateKey &o) const {
+        return vertexType == o.vertexType && pixelShaderType == o.pixelShaderType &&
+               topology == o.topology && blend == o.blend &&
+               depthStencil == o.depthStencil && rasterizer == o.rasterizer;
+    }
+};
+
+struct PipelineStateKeyHash {
+    size_t operator()(const PipelineStateKey &k) const {
+        size_t h = 0;
+        auto combine = [&](size_t v) { h ^= v + 0x9e3779b9 + (h << 6) + (h >> 2); };
+        combine(k.vertexType);
+        combine(k.pixelShaderType);
+        combine(k.topology);
+        combine(k.blend.blendEnable);
+        combine(k.blend.srcBlend);
+        combine(k.blend.dstBlend);
+        combine(k.depthStencil.depthTestEnable);
+        combine(k.depthStencil.depthWriteEnable);
+        combine(k.depthStencil.depthFunc);
+        combine(k.rasterizer.cullEnable);
+        return h;
+    }
+};
+
+// UBO layouts matching GLSL shader uniforms
+struct VertexUBO {
+    Mat4x4 matWV;
+    Mat4x4 matWV2;
+    Mat4x4 matP;
+    Mat4x4 matUV;
+    Float4 vecUVT2;
+    Float4 vecFog;
+    Float4 vecLightAmbientCol;
+    Float4 vecLight0Col;
+    Float4 vecLight1Col;
+    Float4 vecLight0;
+    Float4 vecLight1;
+    Mat4x4 matTexGenObj;
+    Mat4x4 matTexGenEye;
+    Float4 vecWV2Trans;
+    Float4 v_scaleoffset;
+};
+
+struct FragmentUBO {
+    Float4 diffuse_colour;
+    Float4 fog_colour;
+    Float4 unkColor;
+    Float4 alphaTestRef;
+    Float4 clear_colour;
+    Float4 forcedLod;
+};
 
 class Renderer
 {
@@ -62,12 +223,13 @@ public:
     void MatrixMult(float *mat);
     const float *MatrixGet(int type);
     void Set_matrixDirty();
-    void Initialise(ID3D11Device *pDevice, IDXGISwapChain *pSwapChain);
-    ID3D11DeviceContext *InitialiseContext(bool fromPresent);
+
+    void Initialise(void *windowHandle, uint32_t width, uint32_t height);
+    void InitialiseContext(bool fromPresent);
     void StartFrame();
     void DoScreenGrabOnNextPresent();
     void Present();
-    void Clear(int flags, D3D11_RECT *pRect);
+    void Clear(int flags, VkRect2D *pRect);
     void SetClearColour(const float colourRGBA[4]);
     bool IsWidescreen();
     bool IsHiDef();
@@ -79,7 +241,7 @@ public:
     void EndConditionalRendering();
     void DrawVertices(C4JRender::ePrimitiveType PrimitiveType, int count, void *dataIn, C4JRender::eVertexType vType,
                       C4JRender::ePixelShaderType psType);
-    void DrawVertexBuffer(C4JRender::ePrimitiveType PrimitiveType, int count, ID3D11Buffer *buffer, C4JRender::eVertexType vType,
+    void DrawVertexBuffer(C4JRender::ePrimitiveType PrimitiveType, int count, VkBuffer buffer, C4JRender::eVertexType vType,
                           C4JRender::ePixelShaderType psType);
     void CBuffLockStaticCreations();
     int CBuffCreate(int count);
@@ -103,12 +265,12 @@ public:
     void TextureDynamicUpdateEnd();
     void TextureData(int width, int height, void *data, int level, C4JRender::eTextureFormat format);
     void TextureDataUpdate(int xoffset, int yoffset, int width, int height, void *data, int level);
-    HRESULT LoadTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
-    HRESULT LoadTextureData(BYTE *pbData, DWORD dwBytes, D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
-    HRESULT SaveTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int *ppDataOut);
-    HRESULT SaveTextureDataToMemory(void *pOutput, int outputCapacity, int *outputLength, int width, int height, int *ppDataIn);
+    int LoadTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
+    int LoadTextureData(uint8_t *pbData, uint32_t dwBytes, D3DXIMAGE_INFO *pSrcInfo, int **ppDataOut);
+    int SaveTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int *ppDataOut);
+    int SaveTextureDataToMemory(void *pOutput, int outputCapacity, int *outputLength, int width, int height, int *ppDataIn);
     void TextureGetStats();
-    ID3D11ShaderResourceView *TextureGetTexture(int idx);
+    VkImageView TextureGetTexture(int idx);
     void StateSetColour(float r, float g, float b, float a);
     void StateSetDepthMask(bool enable);
     void StateSetBlendEnable(bool enable);
@@ -138,9 +300,9 @@ public:
     void StateSetViewport(C4JRender::eViewportType viewportType);
     void StateSetEnableViewportClipPlanes(bool enable);
     void StateSetTexGenCol(int col, float x, float y, float z, float w, bool eyeSpace);
-    void StateSetStencil(D3D11_COMPARISON_FUNC function, uint8_t stencil_ref, uint8_t stencil_func_mask, uint8_t stencil_write_mask);
+    void StateSetStencil(int function, uint8_t stencil_ref, uint8_t stencil_func_mask, uint8_t stencil_write_mask);
     void StateSetForceLOD(int LOD);
-    void BeginEvent(LPCWSTR eventName);
+    void BeginEvent(const wchar_t *eventName);
     void EndEvent();
     void Suspend();
     bool Suspended();
@@ -148,6 +310,12 @@ public:
     void StateUpdate();
 private:
     void SetupShaders();
+    void SetupDescriptorLayouts();
+    void SetupRenderPass();
+    void SetupFramebuffers();
+    void SetupSyncObjects();
+    void SetupIndexBuffers();
+    void SetupUniformBuffers();
     void ConvertLinearToPng(ImageFileBuffer *pngOut, unsigned char *linearData, unsigned int width, unsigned int height);
     void DrawVertexSetup(C4JRender::eVertexType vType, C4JRender::ePixelShaderType psType, C4JRender::ePrimitiveType primitiveType, int *count,
                          bool *drawIndexed);
@@ -156,29 +324,41 @@ private:
     void UpdateViewportState();
     void UpdateFogState();
     void UpdateTextureState(bool vertexSampler);
-    void MultWithStack(DirectX::XMMATRIX matrix);
-    ID3D11DepthStencilState *GetManagedDepthStencilState();
-    ID3D11BlendState *GetManagedBlendState();
-    ID3D11RasterizerState *GetManagedRasterizerState();
-    ID3D11SamplerState *GetManagedSamplerState();
+    void UpdateUniformBuffers();
+    void MultWithStack(Mat4x4 matrix);
+    VkPipeline GetOrCreatePipeline(const PipelineStateKey &key);
+    VkSampler GetManagedSampler(uint32_t params);
     void DeleteInternalBuffer(int index);
     Renderer::Context &getContext();
+    VkShaderModule CreateShaderModule(const uint32_t *code, size_t size);
+    void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
+    void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+    VkCommandBuffer BeginSingleTimeCommands();
+    void EndSingleTimeCommands(VkCommandBuffer commandBuffer);
+
+    VkPrimitiveTopology MapTopology(C4JRender::ePrimitiveType type);
+    VkCompareOp MapCompareOp(int func);
+    VkBlendFactor MapBlendFactor(int factor);
+
 public:
     struct Texture
     {
         bool allocated;
-        ID3D11Texture2D *texture;
-        ID3D11ShaderResourceView *view;
-        DWORD textureFlags;
-        DWORD mipLevels;
-        DWORD textureFormat;
-        DWORD samplerParams;
+        VkAllocatedImage image;
+        VkImageView view;
+        VkSampler sampler;
+        uint32_t width;
+        uint32_t height;
+        uint32_t textureFlags;
+        uint32_t mipLevels;
+        uint32_t textureFormat;
+        uint32_t samplerParams;
     };
 
     struct TexgenCBuffer
     {
-        DirectX::XMMATRIX unk0;
-        DirectX::XMMATRIX unk1;
+        Mat4x4 unk0;
+        Mat4x4 unk1;
     };
 
     enum eCommandType
@@ -206,7 +386,7 @@ public:
         CommandBuffer(bool full);
         ~CommandBuffer();
         void StartRecording();
-        void EndRecording(ID3D11Device *device);
+        void EndRecording(VmaAllocator allocator);
         std::uint64_t GetAllocated();
         bool IsBusy();
         void AddMatrix(const float *matrix);
@@ -230,16 +410,15 @@ public:
         struct Command
         {
             Renderer::eCommandType m_command_type;
-            BYTE commandPadding[12];
+            uint8_t commandPadding[12];
 
             union
             {
-                BYTE data[64];
+                uint8_t data[64];
 
                 struct
                 {
                     float m_matrix[16];
-                    // DirectX::XMMATRIX m_matrix;
                 } add_matrix;
 
                 struct
@@ -299,7 +478,7 @@ public:
 
                 struct
                 {
-                    BYTE padding;
+                    uint8_t padding;
                     float m_color[3];
                 } set_light_ambient_colour;
 
@@ -325,12 +504,12 @@ public:
                 } set_face_cull;
             };
         };
-        ID3D11Buffer *m_vertexBuffer;
+        VkAllocatedBuffer m_vertexBuffer;
         void *m_vertexData;
         std::uint64_t m_vertexDataLength;
         std::vector<Command> m_commands;
         std::uint64_t m_allocated;
-        BYTE isActive;
+        uint8_t isActive;
     };
 
     struct DeferredCBuff
@@ -339,23 +518,21 @@ public:
         int m_vertex_index;
         int m_vertex_type;
         int m_primitive_type;
-        DirectX::XMMATRIX m_matrix;
+        Mat4x4 m_matrix;
     };
 
     struct Context
     {
         static const unsigned int VERTEX_BUFFER_SIZE = 0x100000;
 
-        Context(ID3D11Device *device, ID3D11DeviceContext *deviceContext);
+        Context();
 
-        ID3D11DeviceContext *m_pDeviceContext;
-        ID3DUserDefinedAnnotation *userAnnotation;
-        DWORD annotateDepth;
-        DirectX::XMMATRIX matrixStacks[MATRIX_MODE_MODELVIEW_MAX][STACK_SIZE];
+        uint32_t annotateDepth;
+        Mat4x4 matrixStacks[MATRIX_MODE_MODELVIEW_MAX][STACK_SIZE];
         bool matrixDirty[MATRIX_MODE_MODELVIEW_MAX];
-        DWORD stackPos[MATRIX_MODE_MODELVIEW_MAX];
-        DWORD stackType;
-        DWORD textureIdx;
+        uint32_t stackPos[MATRIX_MODE_MODELVIEW_MAX];
+        uint32_t stackType;
+        uint32_t textureIdx;
         bool faceCullEnabled;
         bool depthTestEnabled;
         bool alphaTestEnabled;
@@ -368,108 +545,147 @@ public:
         float fogColourRed;
         float fogColourBlue;
         float fogColourGreen;
-        DWORD fogMode;
+        uint32_t fogMode;
         bool lightingEnabled;
         bool lightEnabled[2];
         bool lightingDirty;
-        DWORD forcedLOD;
-        BYTE paddingAfterForceLOD[4];
-        DirectX::XMFLOAT4 lightDirection[2];
-        DirectX::XMFLOAT4 lightColour[2];
-        DirectX::XMFLOAT4 lightAmbientColour;
-        ID3D11Buffer *m_modelViewMatrix;
-        ID3D11Buffer *m_localTransformMatrix;
-        ID3D11Buffer *m_projectionMatrix;
-        ID3D11Buffer *m_textureMatrix;
-        ID3D11Buffer *m_vertexTexcoordBuffer;
-        ID3D11Buffer *m_fogParamsBuffer;
-        ID3D11Buffer *m_lightingStateBuffer;
-        ID3D11Buffer *m_texGenMatricesBuffer;
-        ID3D11Buffer *m_compressedTranslationBuffer;
-        ID3D11Buffer *m_thumbnailBoundsBuffer;
-        ID3D11Buffer *m_tintColorBuffer;
-        ID3D11Buffer *m_fogColourBuffer;
-        ID3D11Buffer *m_unkColorBuffer;
-        ID3D11Buffer *m_alphaTestBuffer;
-        ID3D11Buffer *m_clearColorBuffer;
-        ID3D11Buffer *m_forcedLODBuffer;
+        uint32_t forcedLOD;
+        Float4 lightDirection[2];
+        Float4 lightColour[2];
+        Float4 lightAmbientColour;
+
+        // Uniform data (uploaded to UBO each draw)
+        VertexUBO vertexUBO;
+        FragmentUBO fragmentUBO;
+        bool uniformsDirty;
+
         uint64_t dynamicVertexBase;
-        DWORD dynamicVertexOffset;
-        ID3D11Buffer *dynamicVertexBuffer;
-        DirectX::XMMATRIX texGenMatrices[2];
+        uint32_t dynamicVertexOffset;
+        VkAllocatedBuffer dynamicVertexBuffer;
+        void *dynamicVertexMapped; // persistently mapped
+
+        Mat4x4 texGenMatrices[2];
         Renderer::CommandBuffer *commandBuffer;
-        DWORD recordingBufferIndex;
-        DWORD recordingVertexType;
-        DWORD recordingPrimitiveType;
+        uint32_t recordingBufferIndex;
+        uint32_t recordingVertexType;
+        uint32_t recordingPrimitiveType;
         bool deferredModeEnabled;
         std::vector<DeferredCBuff> deferredBuffers;
-        D3D11_BLEND_DESC blendDesc;
-        D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
-        D3D11_RASTERIZER_DESC rasterizerDesc;
-        float blendFactor[4];
+
+        BlendStateDesc blendDesc;
+        DepthStencilStateDesc depthStencilDesc;
+        RasterizerStateDesc rasterizerDesc;
     };
 
-    static DWORD tlsIdx;
-    static _RTL_CRITICAL_SECTION totalAllocCS;
-    static DWORD s_auiWidths[];
-    static DWORD s_auiHeights[];
-    static DXGI_FORMAT textureFormats[];
-    static D3D_PRIMITIVE_TOPOLOGY g_topologies[];
+    static thread_local Context *tlsContext;
+    static std::mutex totalAllocMutex;
+    static uint32_t s_auiWidths[];
+    static uint32_t s_auiHeights[];
+    static VkFormat textureFormats[];
     static int totalAlloc;
 
     float m_fClearColor[4];
-    ID3D11Device *m_pDevice;
-    ID3D11DeviceContext *m_pDeviceContext;
-    IDXGISwapChain *m_pSwapChain;
-    ID3D11RenderTargetView *renderTargetView;
-    ID3D11RenderTargetView *renderTargetViews[4];
-    ID3D11ShaderResourceView *renderTargetShaderResourceView;
-    ID3D11ShaderResourceView *renderTargetShaderResourceViews[4];
-    ID3D11Texture2D *renderTargetTextures[4];
-    ID3D11DepthStencilView *depthStencilView;
-    ID3D11VertexShader **vertexShaderTable;
-    ID3D11VertexShader *screenSpaceVertexShader;
-    ID3D11VertexShader *screenClearVertexShader;
-    ID3D11PixelShader **pixelShaderTable;
-    ID3D11PixelShader *screenSpacePixelShader;
-    ID3D11PixelShader *screenClearPixelShader;
+
+    // Vulkan core objects
+    VkInstance m_instance;
+    VkPhysicalDevice m_physicalDevice;
+    VkDevice m_device;
+    VmaAllocator m_allocator;
+    VkQueue m_graphicsQueue;
+    VkQueue m_presentQueue;
+    uint32_t m_graphicsQueueFamily;
+    uint32_t m_presentQueueFamily;
+    VkSurfaceKHR m_surface;
+    VkDebugUtilsMessengerEXT m_debugMessenger;
+
+    // Swapchain
+    VkSwapchainKHR m_swapchain;
+    VkFormat m_swapchainFormat;
+    VkExtent2D m_swapchainExtent;
+    std::vector<VkImage> m_swapchainImages;
+    std::vector<VkImageView> m_swapchainImageViews;
+    std::vector<VkFramebuffer> m_swapchainFramebuffers;
+    uint32_t m_currentImageIndex;
+
+    // Depth buffer
+    VkAllocatedImage m_depthImage;
+    VkImageView m_depthImageView;
+    VkFormat m_depthFormat;
+
+    // Render pass
+    VkRenderPass m_renderPass;
+    bool m_renderPassActive;
+
+    // Descriptor sets
+    VkDescriptorSetLayout m_uniformDescriptorLayout;   // set 0: UBOs
+    VkDescriptorSetLayout m_textureDescriptorLayout;   // set 1: textures
+    VkDescriptorPool m_descriptorPool;
+    // Per-frame descriptor sets for uniforms
+    std::array<VkDescriptorSet, VK_MAX_FRAMES_IN_FLIGHT> m_uniformDescriptorSets;
+    // Per-frame uniform buffers
+    std::array<VkAllocatedBuffer, VK_MAX_FRAMES_IN_FLIGHT> m_vertexUBOBuffers;
+    std::array<VkAllocatedBuffer, VK_MAX_FRAMES_IN_FLIGHT> m_fragmentUBOBuffers;
+    std::array<void*, VK_MAX_FRAMES_IN_FLIGHT> m_vertexUBOMapped;
+    std::array<void*, VK_MAX_FRAMES_IN_FLIGHT> m_fragmentUBOMapped;
+
+    VkPipelineLayout m_pipelineLayout;
+
+    // Shaders
+    VkShaderModule m_vertexShaders[C4JRender::VERTEX_TYPE_COUNT];
+    VkShaderModule m_screenSpaceVS;
+    VkShaderModule m_screenClearVS;
+    VkShaderModule m_pixelShaders[C4JRender::PIXEL_SHADER_COUNT];
+    VkShaderModule m_screenSpacePS;
+    VkShaderModule m_screenClearPS;
+
+    // Vertex input descriptions
     unsigned int *vertexStrideTable;
-    ID3D11InputLayout **inputLayoutTable;
-    ID3D11Buffer *quadIndexBuffer;
-    ID3D11Buffer *fanIndexBuffer;
-    DWORD defaultTextureIndex;
-    WORD reservedRendererWord0;
-    BYTE paddingAfterRendererWord0[2];
-    DWORD presentCount;
-    BYTE rendererFlag0;
-    BYTE paddingAfterRendererFlag0[3];
-    _RTL_CRITICAL_SECTION m_commandBufferCS;
-    DWORD activeVertexType;
-    DWORD activePixelType;
-    C4JRender::eViewportType m_ViewportType;
-    BYTE reservedRendererByte0;
-    BYTE paddingAfterViewportType[3];
+
+    // Index buffers (for quad/fan topology conversion)
+    VkAllocatedBuffer quadIndexBuffer;
+    VkAllocatedBuffer fanIndexBuffer;
+
+    // Synchronization
+    std::array<VkSemaphore, VK_MAX_FRAMES_IN_FLIGHT> m_imageAvailableSemaphores;
+    std::array<VkSemaphore, VK_MAX_FRAMES_IN_FLIGHT> m_renderFinishedSemaphores;
+    std::array<VkFence, VK_MAX_FRAMES_IN_FLIGHT> m_inFlightFences;
+    uint32_t m_currentFrame;
+
+    // Command buffers (Vulkan)
+    VkCommandPool m_commandPool;
+    std::array<VkCommandBuffer, VK_MAX_FRAMES_IN_FLIGHT> m_drawCommandBuffers;
+
+    // Textures
+    uint32_t defaultTextureIndex;
     Renderer::Texture m_textures[512];
-    DWORD backBufferWidth;
-    DWORD backBufferHeight;
-    BYTE reservedRendererByte1;
-    BYTE paddingAfterRendererByte1[3];
-    DWORD reservedRendererDword1;
+
+    // State
+    uint32_t backBufferWidth;
+    uint32_t backBufferHeight;
+    uint32_t presentCount;
+    uint32_t activeVertexType;
+    uint32_t activePixelType;
+    C4JRender::eViewportType m_ViewportType;
+
+    // Command buffer system (game-level, not Vulkan)
+    std::mutex m_commandBufferMutex;
     int16_t *m_commandHandleToIndex;
     CommandBuffer **m_commandBuffers;
     uint8_t *m_commandPrimitiveTypes;
-    DirectX::XMMATRIX *m_commandMatrices;
+    Mat4x4 *m_commandMatrices;
     int *m_commandIndexToHandle;
     uint8_t *m_commandVertexTypes;
-    DWORD reservedRendererDword2;
-    DWORD reservedRendererDword3;
-    std::unordered_map<int, ID3D11BlendState *> managedBlendStates;
-    std::unordered_map<int, ID3D11DepthStencilState *> managedDepthStencilStates;
-    std::unordered_map<int, ID3D11SamplerState *> managedSamplerStates;
-    std::unordered_map<int, ID3D11RasterizerState *> managedRasterizerStates;
+    uint32_t reservedRendererDword1; // next handle search start
+    uint32_t reservedRendererDword2;
+    uint32_t reservedRendererDword3;
+    uint8_t reservedRendererByte1; // static creation lock flag
+
+    // Pipeline cache
+    std::unordered_map<PipelineStateKey, VkPipeline, PipelineStateKeyHash> m_pipelineCache;
+    std::unordered_map<uint32_t, VkSampler> managedSamplers;
+
     bool m_bShouldScreenGrabNextFrame;
     bool m_bSuspended;
-    BYTE paddingAfterSuspendState[2];
 };
 
 // Singleton

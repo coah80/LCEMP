@@ -25,12 +25,12 @@ SOFTWARE.
 #include "stdafx.h"
 #include "Renderer.h"
 
-void Renderer::DrawVertexBuffer(C4JRender::ePrimitiveType PrimitiveType, int count, ID3D11Buffer *buffer, C4JRender::eVertexType vType,
+void Renderer::DrawVertexBuffer(C4JRender::ePrimitiveType PrimitiveType, int count, VkBuffer buffer, C4JRender::eVertexType vType,
                                 C4JRender::ePixelShaderType psType)
 {
     PROFILER_SCOPE("Renderer::DrawVertexBuffer", "DrawVertexBuffer", MP_RED2)
     Renderer::Context &c = getContext();
-    ID3D11DeviceContext *d3d11 = c.m_pDeviceContext;
+    VkCommandBuffer cmd = m_drawCommandBuffers[m_currentFrame];
 
     int drawCount = count;
     bool indexed = false;
@@ -39,64 +39,53 @@ void Renderer::DrawVertexBuffer(C4JRender::ePrimitiveType PrimitiveType, int cou
     DrawVertexSetup(vType, psType, PrimitiveType, &drawCount, &indexed);
     StateUpdate();
 
-    const UINT stride = vertexStrideTable[vType];
-    const UINT offset = 0;
-    d3d11->IASetVertexBuffers(0, 1, &buffer, &stride, &offset);
+    const VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &buffer, &offset);
 
     if (indexed)
-        d3d11->DrawIndexed(drawCount, 0, 0);
+        vkCmdDrawIndexed(cmd, drawCount, 1, 0, 0, 0);
     else
-        d3d11->Draw(count, 0);
+        vkCmdDraw(cmd, count, 1, 0, 0);
 }
 
 void Renderer::DrawVertexSetup(C4JRender::eVertexType vType, C4JRender::ePixelShaderType psType, C4JRender::ePrimitiveType PrimitiveType, int *count,
-                               bool *indexed)
+                                bool *indexed)
 {
     PROFILER_SCOPE("Renderer::DrawVertexSetup", "DrawVertexSetup", MP_RED2)
     Renderer::Context &c = getContext();
-    ID3D11DeviceContext *d3d11 = c.m_pDeviceContext;
+    VkCommandBuffer cmd = m_drawCommandBuffers[m_currentFrame];
 
     C4JRender::eVertexType effectiveVertexType = vType;
     if (effectiveVertexType == C4JRender::VERTEX_TYPE_PF3_TF2_CB4_NB4_XW1 && c.lightingEnabled)
         effectiveVertexType = C4JRender::VERTEX_TYPE_PF3_TF2_CB4_NB4_XW1_LIT;
 
-    if (effectiveVertexType != activeVertexType)
-    {
-        d3d11->VSSetShader(vertexShaderTable[effectiveVertexType], NULL, 0);
-        d3d11->IASetInputLayout(inputLayoutTable[effectiveVertexType]);
+    // Track active vertex/pixel shader types for pipeline selection
+    if (static_cast<uint32_t>(effectiveVertexType) != activeVertexType)
         activeVertexType = effectiveVertexType;
-    }
 
-    if (psType != activePixelType)
-    {
-        d3d11->PSSetShader(pixelShaderTable[psType], NULL, 0);
+    if (static_cast<uint32_t>(psType) != activePixelType)
         activePixelType = psType;
-    }
 
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-
+    // Update matrix uniforms into the vertex UBO
     if (c.matrixDirty[MATRIX_MODE_MODELVIEW])
     {
-        d3d11->Map(c.m_modelViewMatrix, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-        memcpy(mapped.pData, MatrixGet(MATRIX_MODE_MODELVIEW), sizeof(DirectX::XMMATRIX));
-        d3d11->Unmap(c.m_modelViewMatrix, 0);
+        std::memcpy(&c.vertexUBO.matWV, MatrixGet(MATRIX_MODE_MODELVIEW), sizeof(Mat4x4));
         c.matrixDirty[MATRIX_MODE_MODELVIEW] = false;
+        c.uniformsDirty = true;
     }
 
     if (c.matrixDirty[MATRIX_MODE_MODELVIEW_PROJECTION])
     {
-        d3d11->Map(c.m_projectionMatrix, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-        memcpy(mapped.pData, MatrixGet(MATRIX_MODE_MODELVIEW_PROJECTION), sizeof(DirectX::XMMATRIX));
-        d3d11->Unmap(c.m_projectionMatrix, 0);
+        std::memcpy(&c.vertexUBO.matP, MatrixGet(MATRIX_MODE_MODELVIEW_PROJECTION), sizeof(Mat4x4));
         c.matrixDirty[MATRIX_MODE_MODELVIEW_PROJECTION] = false;
+        c.uniformsDirty = true;
     }
 
     if (c.matrixDirty[MATRIX_MODE_MODELVIEW_TEXTURE])
     {
-        d3d11->Map(c.m_textureMatrix, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-        memcpy(mapped.pData, MatrixGet(MATRIX_MODE_MODELVIEW_TEXTURE), sizeof(DirectX::XMMATRIX));
-        d3d11->Unmap(c.m_textureMatrix, 0);
+        std::memcpy(&c.vertexUBO.matUV, MatrixGet(MATRIX_MODE_MODELVIEW_TEXTURE), sizeof(Mat4x4));
         c.matrixDirty[MATRIX_MODE_MODELVIEW_TEXTURE] = false;
+        c.uniformsDirty = true;
     }
 
     UpdateFogState();
@@ -104,26 +93,44 @@ void Renderer::DrawVertexSetup(C4JRender::eVertexType vType, C4JRender::ePixelSh
     UpdateLightingState();
     UpdateTexGenState();
 
-    d3d11->IASetPrimitiveTopology(g_topologies[PrimitiveType]);
+    // Handle topology conversion
+    VkPrimitiveTopology topology = MapTopology(PrimitiveType);
 
     if (PrimitiveType == C4JRender::PRIMITIVE_TYPE_QUAD_LIST)
     {
-        d3d11->IASetIndexBuffer(quadIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+        vkCmdBindIndexBuffer(cmd, quadIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
         *count = (*count * 6) / 4;
         *indexed = true;
-        return;
+        topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     }
-
-    if (PrimitiveType == C4JRender::PRIMITIVE_TYPE_TRIANGLE_FAN)
+    else if (PrimitiveType == C4JRender::PRIMITIVE_TYPE_TRIANGLE_FAN)
     {
-        d3d11->IASetIndexBuffer(fanIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+        vkCmdBindIndexBuffer(cmd, fanIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
         *count = (*count - 2) * 3;
         *indexed = true;
-        return;
+        topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    }
+    else
+    {
+        *indexed = false;
     }
 
-    d3d11->IASetIndexBuffer(NULL, DXGI_FORMAT_R16_UINT, 0);
-    *indexed = false;
+    // Upload uniforms and bind pipeline + descriptors
+    UpdateUniformBuffers();
+
+    PipelineStateKey key = {};
+    key.vertexType = activeVertexType;
+    key.pixelShaderType = activePixelType;
+    key.topology = static_cast<uint32_t>(topology);
+    key.blend = c.blendDesc;
+    key.depthStencil = c.depthStencilDesc;
+    key.rasterizer = c.rasterizerDesc;
+
+    VkPipeline pipeline = GetOrCreatePipeline(key);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+    VkDescriptorSet sets[] = { m_uniformDescriptorSets[m_currentFrame] };
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, sets, 0, nullptr);
 }
 
 void Renderer::DrawVertices(C4JRender::ePrimitiveType PrimitiveType, int count, void *vertices, C4JRender::eVertexType vType,
@@ -131,7 +138,7 @@ void Renderer::DrawVertices(C4JRender::ePrimitiveType PrimitiveType, int count, 
 {
     PROFILER_SCOPE("Renderer::DrawVertices", "DrawVertices", MP_RED2)
     Renderer::Context &c = getContext();
-    ID3D11DeviceContext *d3d11 = c.m_pDeviceContext;
+    VkCommandBuffer cmd = m_drawCommandBuffers[m_currentFrame];
     Renderer::CommandBuffer *commandBuffer = c.commandBuffer;
 
     if (commandBuffer != NULL)
@@ -142,8 +149,8 @@ void Renderer::DrawVertices(C4JRender::ePrimitiveType PrimitiveType, int count, 
 
         c.recordingPrimitiveType = PrimitiveType;
         c.recordingVertexType = effectiveVertexType;
-        const UINT stride = vertexStrideTable[effectiveVertexType];
-        commandBuffer->AddVertices(stride, static_cast<UINT>(count), vertices, c);
+        const unsigned int stride = vertexStrideTable[effectiveVertexType];
+        commandBuffer->AddVertices(stride, static_cast<unsigned int>(count), vertices, c);
         return;
     }
 
@@ -153,33 +160,27 @@ void Renderer::DrawVertices(C4JRender::ePrimitiveType PrimitiveType, int count, 
     PROFILER_SCOPE("Renderer::DrawVertices", "DrawVertexSetup", MP_RED2)
     DrawVertexSetup(vType, psType, PrimitiveType, &drawCount, &indexed);
 
-    const UINT stride = vertexStrideTable[vType];
-    const UINT vertexBytes = stride * static_cast<UINT>(count);
+    const unsigned int stride = vertexStrideTable[vType];
+    const unsigned int vertexBytes = stride * static_cast<unsigned int>(count);
 
     assert(vertexBytes <= Context::VERTEX_BUFFER_SIZE);
 
-    UINT vertexOffset = c.dynamicVertexOffset;
+    uint32_t vertexOffset = c.dynamicVertexOffset;
     if (vertexOffset + vertexBytes > Context::VERTEX_BUFFER_SIZE)
         vertexOffset = 0;
 
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    const D3D11_MAP mapType = vertexOffset == 0 ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE;
-    const HRESULT hr = d3d11->Map(c.dynamicVertexBuffer, 0, mapType, 0, &mapped);
-    if (FAILED(hr))
-        printf("ERROR: 0x%x\n", static_cast<unsigned int>(hr));
-
-    memcpy(reinterpret_cast<std::uint8_t *>(mapped.pData) + vertexOffset, vertices, vertexBytes);
-    d3d11->Unmap(c.dynamicVertexBuffer, 0);
+    // Copy vertex data to persistently mapped dynamic vertex buffer
+    std::memcpy(static_cast<uint8_t *>(c.dynamicVertexMapped) + vertexOffset, vertices, vertexBytes);
 
     StateUpdate();
 
-    ID3D11Buffer *dynamicBuffer = c.dynamicVertexBuffer;
-    d3d11->IASetVertexBuffers(0, 1, &dynamicBuffer, &stride, &vertexOffset);
+    const VkDeviceSize vkOffset = static_cast<VkDeviceSize>(vertexOffset);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &c.dynamicVertexBuffer.buffer, &vkOffset);
 
     if (indexed)
-        d3d11->DrawIndexed(drawCount, 0, 0);
+        vkCmdDrawIndexed(cmd, drawCount, 1, 0, 0, 0);
     else
-        d3d11->Draw(count, 0);
+        vkCmdDraw(cmd, count, 1, 0, 0);
 
     c.dynamicVertexOffset = vertexOffset + vertexBytes;
 }
