@@ -1,5 +1,6 @@
 #include "stdafx.h"
 
+#ifdef _WIN32
 // From Xbox documentation
 
 typedef struct tagTHREADNAME_INFO {
@@ -39,3 +40,4 @@ void SetThreadName( DWORD dwThreadID, LPCSTR szThreadName )
 #endif
 #endif // __PS3__
 }
+#endif // _WIN32

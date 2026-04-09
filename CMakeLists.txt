@@ -58,25 +58,35 @@ endif()
 target_compile_definitions(MinecraftWorld PRIVATE
         _LARGE_WORLDS
         _LIB
+        _WINDOWS64
         $<$<CONFIG:Debug>:_DEBUG_MENUS_ENABLED;_DEBUG>
-        $<$<PLATFORM_ID:Windows>:_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64>
+        $<$<PLATFORM_ID:Windows>:_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS>
 )
 
 target_compile_definitions(MinecraftClient PRIVATE
         _LARGE_WORLDS
+        _WINDOWS64
         $<$<CONFIG:Debug>:_DEBUG_MENUS_ENABLED;_DEBUG>
-        $<$<PLATFORM_ID:Windows>:_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64>
+        $<$<PLATFORM_ID:Windows>:_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS>
 )
 
 target_include_directories(MinecraftWorld PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.World"
         "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.World/x64headers"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/Windows64/4JLibs/inc"
 )
+
+target_link_libraries(MinecraftWorld PUBLIC Vulkan::Vulkan)
 
 target_include_directories(MinecraftClient PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client"
         "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/Common"
         "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/Common/UI"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/Common/Audio"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/Windows64/4JLibs/inc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/Windows_Libs/Dev/Render"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/Windows_Libs/Dev/Render/libpng"
 )
 
 # stb_image for PNG loading (used by UI renderer)
@@ -92,7 +102,7 @@ target_link_libraries(MinecraftClient PRIVATE
         MinecraftWorld
         Vulkan::Vulkan
         glfw
-        GPUOpen::VulkanMemoryAllocator
+        VulkanMemoryAllocator
 )
 
 # Platform-specific libraries (Windows only - these are proprietary binaries)

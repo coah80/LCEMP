@@ -1,47 +1,50 @@
 // Minecraft.cpp : Defines the entry point for the application.
 //
+#ifdef _WIN32
 
 #include "stdafx.h"
 
 #include <assert.h>
-#include "GameConfig\Minecraft.spa.h"
-#include "..\MinecraftServer.h"
-#include "..\LocalPlayer.h"
-#include "..\..\Minecraft.World\ItemInstance.h"
-#include "..\..\Minecraft.World\MapItem.h"
-#include "..\..\Minecraft.World\Recipes.h"
-#include "..\..\Minecraft.World\Recipy.h"
-#include "..\..\Minecraft.World\Language.h"
-#include "..\..\Minecraft.World\StringHelpers.h"
-#include "..\..\Minecraft.World\AABB.h"
-#include "..\..\Minecraft.World\Vec3.h"
-#include "..\..\Minecraft.World\Level.h"
-#include "..\..\Minecraft.World\net.minecraft.world.level.tile.h"
-#include "..\MultiplayerLocalPlayer.h"
+#include "GameConfig/Minecraft.spa.h"
+#include "../MinecraftServer.h"
+#include "../LocalPlayer.h"
+#include "../../Minecraft.World/ItemInstance.h"
+#include "../../Minecraft.World/MapItem.h"
+#include "../../Minecraft.World/Recipes.h"
+#include "../../Minecraft.World/Recipy.h"
+#include "../../Minecraft.World/Language.h"
+#include "../../Minecraft.World/StringHelpers.h"
+#include "../../Minecraft.World/AABB.h"
+#include "../../Minecraft.World/Vec3.h"
+#include "../../Minecraft.World/Level.h"
+#include "../../Minecraft.World/net.minecraft.world.level.tile.h"
+#include "../MultiplayerLocalPlayer.h"
 
-#include "..\ClientConnection.h"
-#include "..\User.h"
-#include "..\..\Minecraft.World\Socket.h"
-#include "..\KeyboardMouseInput.h"
-#include "..\..\Minecraft.World\ThreadName.h"
-#include "..\..\Minecraft.Client\StatsCounter.h"
-#include "..\ConnectScreen.h"
+#include "../ClientConnection.h"
+#include "../User.h"
+#include "../../Minecraft.World/Socket.h"
+#include "../KeyboardMouseInput.h"
+#include "../../Minecraft.World/ThreadName.h"
+#include "../../Minecraft.Client/StatsCounter.h"
+#include "../ConnectScreen.h"
 //#include "Social\SocialManager.h"
 //#include "Leaderboards\LeaderboardManager.h"
 //#include "XUI\XUI_Scene_Container.h"
 //#include "NetworkManager.h"
-#include "..\..\Minecraft.Client\Tesselator.h"
-#include "..\..\Minecraft.Client\Options.h"
-#include "Sentient\SentientManager.h"
-#include "..\..\Minecraft.World\IntCache.h"
-#include "..\Textures.h"
+#include "../../Minecraft.Client/Tesselator.h"
+#include "../../Minecraft.Client/Options.h"
+#include "Sentient/SentientManager.h"
+#include "../../Minecraft.World/IntCache.h"
+#include "../Textures.h"
 #include "Resource.h"
-#include "..\..\Minecraft.World\compression.h"
-#include "..\..\Minecraft.World\OldChunkStorage.h"
+#include "../../Minecraft.World/compression.h"
+#include "../../Minecraft.World/OldChunkStorage.h"
 
-#include "Network\WinsockNetLayer.h"
+#ifdef _WIN32
+#include "Network/WinsockNetLayer.h"
+#endif
 
-#include "..\PlayerRenderer.h"
+#include "../PlayerRenderer.h"
 
 #include "Windows64_PostProcess.h"
 
@@ -1688,3 +1691,4 @@ void MemPixStuff()
 }
 
 #endif
+#endif // _WIN32

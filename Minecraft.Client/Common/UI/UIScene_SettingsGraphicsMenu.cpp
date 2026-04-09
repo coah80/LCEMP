@@ -1,8 +1,8 @@
 #include "stdafx.h"
 #include "UI.h"
 #include "UIScene_SettingsGraphicsMenu.h"
-#include "..\..\Minecraft.h"
-#include "..\..\GameRenderer.h"
+#include "../../Minecraft.h"
+#include "../../GameRenderer.h"
 UIScene_SettingsGraphicsMenu::UIScene_SettingsGraphicsMenu(int iPad, void *initData, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
 	// Setup all the Iggy references we need for this scene
@@ -123,7 +123,7 @@ void UIScene_SettingsGraphicsMenu::handleInput(int iPad, int key, bool repeat, b
 				app.SetGameSettings(m_iPad,eGameSetting_Fullscreen,wantFullscreen?1:0);
 				if(wantFullscreen != wasFullscreen)
 				{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 					extern void ToggleFullscreen();
 					ToggleFullscreen();
 #endif

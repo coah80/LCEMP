@@ -128,6 +128,11 @@ void C4JRender::Clear(int flags, VkRect2D* pRect)
 	InternalRenderManager.Clear(flags, pRect);
 }
 
+void C4JRender::Clear(int flags, D3D11_RECT* pRect)
+{
+	InternalRenderManager.Clear(flags, pRect);
+}
+
 void C4JRender::SetClearColour(const float colourRGBA[4])
 {
 	InternalRenderManager.SetClearColour(colourRGBA);

@@ -1,4 +1,6 @@
 #include "stdafx.h"
+#include <algorithm>
+#include <random>
 #include "com.mojang.nbt.h"
 #include "net.minecraft.world.entity.ai.goal.h"
 #include "net.minecraft.world.entity.ai.navigation.h"
@@ -13,7 +15,7 @@
 #include "net.minecraft.world.item.trading.h"
 #include "net.minecraft.world.level.tile.h"
 #include "net.minecraft.world.level.h"
-#include "..\Minecraft.Client\Textures.h"
+#include "../Minecraft.Client/Textures.h"
 #include "Villager.h"
 
 unordered_map<int, pair<int,int> > Villager::MIN_MAX_VALUES;
@@ -529,7 +531,7 @@ void Villager::addOffers(int addCount)
 	}
 
 	// shuffle the list to make it more interesting
-	std::random_shuffle(newOffers->begin(), newOffers->end());
+	std::shuffle(newOffers->begin(), newOffers->end(), std::mt19937{std::random_device{}()});
 
 	if (offers == NULL)
 	{

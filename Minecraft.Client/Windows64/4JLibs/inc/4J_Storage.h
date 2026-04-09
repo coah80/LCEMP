@@ -43,20 +43,26 @@ class C4JStorage
 
 public:
 	// Structs defined in the DLC_Creator, but added here to be used in the app
+	// on-disk these use 2-byte wchar (Windows WCHAR) regardless of platform
+#if defined(_WIN32)
+	typedef WCHAR DLC_WCHAR;
+#else
+	typedef uint16_t DLC_WCHAR;
+#endif
 	typedef struct  
 	{
 		unsigned int	uiFileSize;
 		DWORD			dwType;
-		DWORD			dwWchCount; // count of WCHAR in next array
-		WCHAR			wchFile[1];
+		DWORD			dwWchCount; // count of DLC_WCHAR in next array
+		DLC_WCHAR		wchFile[1];
 	}
 	DLC_FILE_DETAILS, *PDLC_FILE_DETAILS;
 
 	typedef struct
 	{
-		DWORD	dwType;
-		DWORD	dwWchCount; // count of WCHAR in next array;
-		WCHAR	wchData[1]; // will be an array of size dwBytes
+		DWORD		dwType;
+		DWORD		dwWchCount; // count of DLC_WCHAR in next array;
+		DLC_WCHAR	wchData[1]; // will be an array of size dwBytes
 	}
 	DLC_FILE_PARAM, *PDLC_FILE_PARAM;
 	// End of DLC_Creator structs

@@ -7,7 +7,10 @@
 #ifndef _SOCIAL_MANAGER_H
 #define _SOCIAL_MANAGER_H
 
+#ifdef _WIN32
 #include <xsocialpost.h>
+#else
+#endif
 
 #define MAX_SOCIALPOST_CAPTION	60
 #define MAX_SOCIALPOST_DESC		100

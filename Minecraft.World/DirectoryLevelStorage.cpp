@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include <cfloat>
 #include "System.h"
 #include "net.minecraft.world.entity.player.h"
 #include "net.minecraft.world.level.h"

@@ -1,0 +1,4 @@
+iteration	sources_added	gaps_filled	gaps_remaining	confidence	status	description
+0	3	0	5	low	keep	initial analysis of headers and repo structure
+1	5	3	2	medium	keep	researched Ghidra, IDA, RetDec, Binary Ninja, .lib format
+2	4	2	0	high	done	found open-source replacements, concluded stubs > decompilation

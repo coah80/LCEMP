@@ -2,18 +2,18 @@
 #include "UIController.h"
 #include "UI.h"
 #include "UIScene.h"
-#include "..\..\..\Minecraft.World\StringHelpers.h"
-#include "..\..\LocalPlayer.h"
-#include "..\..\DLCTexturePack.h"
-#include "..\..\TexturePackRepository.h"
-#include "..\..\Minecraft.h"
-#include "..\..\..\Minecraft.World\net.minecraft.world.entity.boss.enderdragon.h"
-#ifdef _WINDOWS64
-#include "..\..\KeyboardMouseInput.h"
+#include "../../../Minecraft.World/StringHelpers.h"
+#include "../../LocalPlayer.h"
+#include "../../DLCTexturePack.h"
+#include "../../TexturePackRepository.h"
+#include "../../Minecraft.h"
+#include "../../../Minecraft.World/net.minecraft.world.entity.boss.enderdragon.h"
+#if defined(_WINDOWS64) && defined(_WIN32)
+#include "../../KeyboardMouseInput.h"
 #include "UIControl_Slider.h"
 #endif
-#include "..\..\EnderDragonRenderer.h"
-#include "..\..\MultiPlayerLocalPlayer.h"
+#include "../../EnderDragonRenderer.h"
+#include "../../MultiPlayerLocalPlayer.h"
 #include "UIFontData.h"
 #ifdef __PSVITA__
 #include <message_dialog.h>
@@ -25,7 +25,7 @@
 
 //#define ENABLE_IGGY_EXPLORER
 #ifdef ENABLE_IGGY_EXPLORER
-#include "Windows64\Iggy\include\iggyexpruntime.h"
+#include "Windows64/Iggy/include/iggyexpruntime.h"
 #endif
 
 //#define ENABLE_IGGY_PERFMON
@@ -35,18 +35,18 @@
 #define PM_ORIGIN_Y 34
 
 #ifdef __ORBIS__
-#include "Orbis\Iggy\include\iggyperfmon.h"
-#include "Orbis\Iggy\include\iggyperfmon_orbis.h"
+#include "Orbis/Iggy/include/iggyperfmon.h"
+#include "Orbis/Iggy/include/iggyperfmon_orbis.h"
 #elif defined _DURANGO
-#include "Durango\Iggy\include\iggyperfmon.h"
+#include "Durango/Iggy/include/iggyperfmon.h"
 #elif defined __PS3__
-#include "PS3\Iggy\include\iggyperfmon.h"
-#include "PS3\Iggy\include\iggyperfmon_ps3.h"
+#include "PS3/Iggy/include/iggyperfmon.h"
+#include "PS3/Iggy/include/iggyperfmon_ps3.h"
 #elif defined __PSVITA__
-#include "PSVita\Iggy\include\iggyperfmon.h"
-#include "PSVita\Iggy\include\iggyperfmon_psp2.h"
+#include "PSVita/Iggy/include/iggyperfmon.h"
+#include "PSVita/Iggy/include/iggyperfmon_psp2.h"
 #elif defined __WINDOWS64
-#include "Windows64\Iggy\include\iggyperfmon.h"
+#include "Windows64/Iggy/include/iggyperfmon.h"
 #endif
 
 #endif
@@ -562,7 +562,7 @@ void UIController::ReloadSkin()
 		m_iggyLibraries[i] = IGGY_INVALID_LIBRARY;
 	}
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	// 4J Stu - Don't load on a thread on windows. I haven't investigated this in detail, so a quick fix
 	reloadSkinThreadProc(this);
 #else
@@ -690,7 +690,7 @@ void UIController::tickInput()
 		else
 #endif
 		{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 			if (!g_KBMInput.IsMouseGrabbed() && g_KBMInput.IsKBMActive())
 			{
 				UIScene *pScene = NULL;
@@ -1020,7 +1020,7 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 	pressed = InputManager.ButtonPressed(iPad,key); // Toggle
 	released = InputManager.ButtonReleased(iPad,key); // Toggle
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	if (iPad == 0)
 	{
 		int vk = 0;
@@ -1338,7 +1338,7 @@ void UIController::setupCustomDrawGameState()
 	m_customRenderingClearRect.top = LONG_MAX;
 	m_customRenderingClearRect.bottom = LONG_MIN;
 
-#if defined _WINDOWS64 || _DURANGO
+#if defined(_WIN32) && (defined(_WINDOWS64) || defined(_DURANGO))
 	PIXBeginNamedEvent(0,"StartFrame");
 	RenderManager.StartFrame();
 	PIXEndNamedEvent();
@@ -1399,10 +1399,10 @@ void UIController::setupCustomDrawMatrices(UIScene *scene, CustomDrawData *custo
 	top = m_tileOriginY + (sceneHeight - customDrawRegion->mat[(1*4)+3]*sceneHeight)/2;
 	bottom = top + (sceneHeight * -customDrawRegion->mat[(1*4) + 1])/2 * customDrawRegion->y1;
 
-	m_customRenderingClearRect.left = min(m_customRenderingClearRect.left, left);
-	m_customRenderingClearRect.right = max(m_customRenderingClearRect.right, right);;
-	m_customRenderingClearRect.top = min(m_customRenderingClearRect.top, top);
-	m_customRenderingClearRect.bottom = max(m_customRenderingClearRect.bottom, bottom);
+	m_customRenderingClearRect.left = std::min(m_customRenderingClearRect.left, (long)left);
+	m_customRenderingClearRect.right = std::max(m_customRenderingClearRect.right, (long)right);;
+	m_customRenderingClearRect.top = std::min(m_customRenderingClearRect.top, (long)top);
+	m_customRenderingClearRect.bottom = std::max(m_customRenderingClearRect.bottom, (long)bottom);
 
 	if(!m_bScreenWidthSetup)
 	{

@@ -8,23 +8,23 @@
 #include "Settings.h"
 #include "PlayerList.h"
 #include "MultiPlayerLevel.h"
-#include "..\Minecraft.World\Pos.h"
-#include "..\Minecraft.World\net.minecraft.world.level.h"
-#include "..\Minecraft.World\net.minecraft.world.level.storage.h"
-#include "..\Minecraft.World\net.minecraft.world.level.dimension.h"
-#include "..\Minecraft.World\Random.h"
-#include "..\Minecraft.World\net.minecraft.world.inventory.h"
-#include "..\Minecraft.World\net.minecraft.network.packet.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.projectile.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.h"
-#include "..\Minecraft.World\net.minecraft.world.item.h"
-#include "..\Minecraft.World\net.minecraft.world.item.trading.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.item.h"
-#include "..\Minecraft.World\net.minecraft.world.level.tile.entity.h"
-#include "..\Minecraft.World\net.minecraft.stats.h"
-#include "..\Minecraft.World\net.minecraft.locale.h"
-#include "..\Minecraft.World\net.minecraft.world.damagesource.h"
-#include "..\Minecraft.World\LevelChunk.h"
+#include "../Minecraft.World/Pos.h"
+#include "../Minecraft.World/net.minecraft.world.level.h"
+#include "../Minecraft.World/net.minecraft.world.level.storage.h"
+#include "../Minecraft.World/net.minecraft.world.level.dimension.h"
+#include "../Minecraft.World/Random.h"
+#include "../Minecraft.World/net.minecraft.world.inventory.h"
+#include "../Minecraft.World/net.minecraft.network.packet.h"
+#include "../Minecraft.World/net.minecraft.world.entity.projectile.h"
+#include "../Minecraft.World/net.minecraft.world.entity.h"
+#include "../Minecraft.World/net.minecraft.world.item.h"
+#include "../Minecraft.World/net.minecraft.world.item.trading.h"
+#include "../Minecraft.World/net.minecraft.world.entity.item.h"
+#include "../Minecraft.World/net.minecraft.world.level.tile.entity.h"
+#include "../Minecraft.World/net.minecraft.stats.h"
+#include "../Minecraft.World/net.minecraft.locale.h"
+#include "../Minecraft.World/net.minecraft.world.damagesource.h"
+#include "../Minecraft.World/LevelChunk.h"
 #include "LevelRenderer.h"
 
 ServerPlayer::ServerPlayer(MinecraftServer *server, Level *level, const wstring& name, ServerPlayerGameMode *gameMode) : Player(level)
@@ -306,7 +306,7 @@ void ServerPlayer::doTickA()
 // 4J - split off the chunk sending bit of the tick here from ::doTick so we can do this exactly once per player per server tick
 void ServerPlayer::doChunkSendingTick(bool dontDelayChunks)
 {
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	for (int _w64cs = 0; _w64cs < 4; _w64cs++)
 	{
 #endif
@@ -348,7 +348,7 @@ void ServerPlayer::doChunkSendingTick(bool dontDelayChunks)
 			}
 			else
 			{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 				if( dontDelayChunks || 
 					((connection->countDelayedPackets() < 16 )&&
 					(g_NetworkManager.GetHostPlayer()->GetSendQueueSizeMessages( NULL, true ) < 16 )&&
@@ -469,7 +469,7 @@ void ServerPlayer::doChunkSendingTick(bool dontDelayChunks)
             }
         }
     }
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	}
 #endif
 }

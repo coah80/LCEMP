@@ -33,48 +33,48 @@
 #include "Input.h"
 #include "FrustumCuller.h"
 #include "Camera.h"
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 #include "KeyboardMouseInput.h"
 #endif
 
-#include "..\Minecraft.World\MobEffect.h"
-#include "..\Minecraft.World\Difficulty.h"
-#include "..\Minecraft.World\net.minecraft.world.level.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.player.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.item.h"
-#include "..\Minecraft.World\net.minecraft.world.phys.h"
-#include "..\Minecraft.World\File.h"
-#include "..\Minecraft.World\net.minecraft.world.level.storage.h"
-#include "..\Minecraft.World\net.minecraft.h"
-#include "..\Minecraft.World\net.minecraft.stats.h"
-#include "..\Minecraft.World\System.h"
-#include "..\Minecraft.World\ByteBuffer.h"
-#include "..\Minecraft.World\net.minecraft.world.level.tile.h"
-#include "..\Minecraft.World\net.minecraft.world.level.chunk.h"
-#include "..\Minecraft.World\net.minecraft.world.level.dimension.h"
-#include "..\Minecraft.World\net.minecraft.world.item.h"
-#include "..\Minecraft.World\Minecraft.World.h"
+#include "../Minecraft.World/MobEffect.h"
+#include "../Minecraft.World/Difficulty.h"
+#include "../Minecraft.World/net.minecraft.world.level.h"
+#include "../Minecraft.World/net.minecraft.world.entity.h"
+#include "../Minecraft.World/net.minecraft.world.entity.player.h"
+#include "../Minecraft.World/net.minecraft.world.entity.item.h"
+#include "../Minecraft.World/net.minecraft.world.phys.h"
+#include "../Minecraft.World/File.h"
+#include "../Minecraft.World/net.minecraft.world.level.storage.h"
+#include "../Minecraft.World/net.minecraft.h"
+#include "../Minecraft.World/net.minecraft.stats.h"
+#include "../Minecraft.World/System.h"
+#include "../Minecraft.World/ByteBuffer.h"
+#include "../Minecraft.World/net.minecraft.world.level.tile.h"
+#include "../Minecraft.World/net.minecraft.world.level.chunk.h"
+#include "../Minecraft.World/net.minecraft.world.level.dimension.h"
+#include "../Minecraft.World/net.minecraft.world.item.h"
+#include "../Minecraft.World/Minecraft.World.h"
 #include "ClientConnection.h"
-#include "..\Minecraft.World\HellRandomLevelSource.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.animal.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.monster.h"
-#include "..\Minecraft.World\StrongholdFeature.h"
-#include "..\Minecraft.World\IntCache.h"
-#include "..\Minecraft.World\Villager.h"
-#include "..\Minecraft.World\EntityIO.h" // for mobs
-#include "..\Minecraft.World\SparseLightStorage.h"
-#include "..\Minecraft.World\SparseDataStorage.h"
+#include "../Minecraft.World/HellRandomLevelSource.h"
+#include "../Minecraft.World/net.minecraft.world.entity.animal.h"
+#include "../Minecraft.World/net.minecraft.world.entity.monster.h"
+#include "../Minecraft.World/StrongholdFeature.h"
+#include "../Minecraft.World/IntCache.h"
+#include "../Minecraft.World/Villager.h"
+#include "../Minecraft.World/EntityIO.h" // for mobs
+#include "../Minecraft.World/SparseLightStorage.h"
+#include "../Minecraft.World/SparseDataStorage.h"
 #include "TextureManager.h"
 #ifdef _XBOX
-#include "Xbox\Network\NetworkPlayerXbox.h"
+#include "Xbox/Network/NetworkPlayerXbox.h"
 #endif
-#include "Common\UI\IUIScene_CreativeMenu.h"
-#include "Common\UI\UIFontData.h"
+#include "Common/UI/IUIScene_CreativeMenu.h"
+#include "Common/UI/UIFontData.h"
 #include "DLCTexturePack.h"
 
 #ifdef __ORBIS__
-#include "Orbis\Network\PsPlusUpsellWrapper_Orbis.h"
+#include "Orbis/Network/PsPlusUpsellWrapper_Orbis.h"
 #endif
 
 // 4J Turning this on will change the graph at the bottom of the debug overlay to show the number of packets of each type added per fram
@@ -549,7 +549,7 @@ void Minecraft::setScreen(Screen *screen)
 		this->screen->removed();
 	}
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	if (screen != NULL && g_KBMInput.IsMouseGrabbed())
 	{
 		g_KBMInput.SetMouseGrabbed(false);
@@ -1456,7 +1456,7 @@ void Minecraft::run_middle()
 					if(localplayers[i]->abilities.flying)
 					{
 						if(InputManager.ButtonDown(i, MINECRAFT_ACTION_SNEAK_TOGGLE))			localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_SNEAK_TOGGLE;
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 						if(i == 0 && g_KBMInput.IsKBMActive() && g_KBMInput.IsKeyDown(KeyboardMouseInput::KEY_SNEAK))		localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_SNEAK_TOGGLE;
 #endif
 					}
@@ -1467,7 +1467,7 @@ void Minecraft::run_middle()
 					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_RENDER_THIRD_PERSON))		localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_RENDER_THIRD_PERSON;
 					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_GAME_INFO))				localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_GAME_INFO;
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 					if (i == 0)
 					{
 						if (g_KBMInput.IsKBMActive())
@@ -1807,7 +1807,7 @@ void Minecraft::run_middle()
 						bool hasControllerInput = (localplayers[idx]->ullButtonsPressed!=0) || InputManager.GetJoypadStick_LX(idx,false)!=0.0f ||
 							InputManager.GetJoypadStick_LY(idx,false)!=0.0f || InputManager.GetJoypadStick_RX(idx,false)!=0.0f ||
 							InputManager.GetJoypadStick_RY(idx,false)!=0.0f;
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 						bool hasKBMInput = (idx == 0) && g_KBMInput.HasAnyInput();
 #else
 						bool hasKBMInput = false;
@@ -2314,7 +2314,7 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 		}
 	}
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	if ((screen != NULL || ui.GetMenuDisplayed(iPad)) && g_KBMInput.IsMouseGrabbed())
 	{
 		g_KBMInput.SetMouseGrabbed(false);
@@ -2323,7 +2323,7 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 
 	if (screen == NULL && !ui.GetMenuDisplayed(iPad) )
 	{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 		if (!g_KBMInput.IsMouseGrabbed() && g_KBMInput.IsWindowFocused())
 		{
 			g_KBMInput.SetMouseGrabbed(true);
@@ -3269,7 +3269,7 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 		{
 			wheel = -1;
 		}
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 		if (iPad == 0 && wheel == 0 && g_KBMInput.IsKBMActive())
 		{
 			int mw = g_KBMInput.GetMouseWheel();
@@ -3299,7 +3299,7 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 			}
 		}
 
-#ifdef _WINDOWS64 // allows for the player to get the block they are looking at in creative by middle clicking.
+#if defined(_WINDOWS64) && defined(_WIN32) // allows for the player to get the block they are looking at in creative by middle clicking.
 		if (iPad == 0 && g_KBMInput.IsKBMActive() && player->abilities.instabuild && g_KBMInput.IsMouseButtonPressed(KeyboardMouseInput::MOUSE_MIDDLE) && hitResult != NULL && (hitResult->type == HitResult::TILE || hitResult->type == HitResult::ENTITY))
 		{
 			//printf("MIDDLE CLICK TEST!!"); // windermed was here.
@@ -3392,7 +3392,7 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 				player->lastClickTick[0] = ticks;
 			}
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 			bool actionHeld = InputManager.ButtonDown(iPad, MINECRAFT_ACTION_ACTION) || (iPad == 0 && g_KBMInput.IsKBMActive() && g_KBMInput.IsMouseButtonDown(KeyboardMouseInput::MOUSE_LEFT));
 #else
 			bool actionHeld = InputManager.ButtonDown(iPad, MINECRAFT_ACTION_ACTION);
@@ -3423,7 +3423,7 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 		lastClickTick = ticks;
 		}
 		*/
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 		bool useHeld = InputManager.ButtonDown(iPad, MINECRAFT_ACTION_USE) || (iPad == 0 && g_KBMInput.IsKBMActive() && g_KBMInput.IsMouseButtonDown(KeyboardMouseInput::MOUSE_RIGHT));
 #else
 		bool useHeld = InputManager.ButtonDown(iPad, MINECRAFT_ACTION_USE);
@@ -4553,16 +4553,21 @@ void Minecraft::main()
 	wstring name;
 	wstring sessionId;
 
-	//g_iMainThreadId = GetCurrentThreadId();
-
 	useLomp = true;
 
+	fprintf(stderr, "  [MC::main] calling MinecraftWorld_RunStaticCtors...\n");
 	MinecraftWorld_RunStaticCtors();
+	fprintf(stderr, "  [MC::main] calling EntityRenderDispatcher::staticCtor...\n");
 	EntityRenderDispatcher::staticCtor();
+	fprintf(stderr, "  [MC::main] calling TileEntityRenderDispatcher::staticCtor...\n");
 	TileEntityRenderDispatcher::staticCtor();
+	fprintf(stderr, "  [MC::main] calling User::staticCtor...\n");
 	User::staticCtor();
+	fprintf(stderr, "  [MC::main] calling Tutorial::staticCtor...\n");
 	Tutorial::staticCtor();
+	fprintf(stderr, "  [MC::main] calling ColourTable::staticCtor...\n");
 	ColourTable::staticCtor();
+	fprintf(stderr, "  [MC::main] calling loadDefaultGameRules...\n");
 	app.loadDefaultGameRules();
 
 #ifdef _LARGE_WORLDS

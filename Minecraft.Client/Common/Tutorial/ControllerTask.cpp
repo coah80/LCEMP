@@ -1,14 +1,14 @@
 #include "stdafx.h"
 #include <string>
 #include <unordered_map>
-#include "..\..\Minecraft.h"
-#include "..\..\MultiplayerLocalPlayer.h"
+#include "../../Minecraft.h"
+#include "../../MultiplayerLocalPlayer.h"
 #include "Tutorial.h"
 #include "TutorialConstraints.h"
 #include "ControllerTask.h"
 
-#ifdef _WINDOWS64
-#include "..\..\KeyboardMouseInput.h"
+#if defined(_WINDOWS64) && defined(_WIN32)
+#include "../../KeyboardMouseInput.h"
 #endif
 
 ControllerTask::ControllerTask(Tutorial *tutorial, int descriptionId, bool enablePreCompletion, bool showMinimumTime,
@@ -70,7 +70,7 @@ bool ControllerTask::isCompleted()
 				}
 				else
 				{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 					bAllComplete = true;
 #else
 					bAllComplete = false;
@@ -95,7 +95,7 @@ bool ControllerTask::isCompleted()
 				}
 				else
 				{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 					bAllComplete = true;
 #else
 					bAllComplete = false;

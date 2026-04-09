@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#ifdef _WIN32
 #include "KeyboardMouseInput.h"
 #include <cmath>
 
@@ -339,3 +340,4 @@ float KeyboardMouseInput::GetLookY(float sensitivity) const
 {
 	return (float)(-m_mouseDeltaY) * sensitivity;
 }
+#endif // _WIN32

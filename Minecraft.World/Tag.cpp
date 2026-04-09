@@ -79,8 +79,13 @@ Tag *Tag::setName(const wstring& name)
 
 Tag *Tag::readNamedTag(DataInput *dis)
 {
+#ifdef _MSC_VER
 	static __declspec(thread) int depth = 0;
 	static __declspec(thread) int totalTagCount = 0;
+#else
+	static thread_local int depth = 0;
+	static thread_local int totalTagCount = 0;
+#endif
 
 	if (depth == 0)
 		totalTagCount = 0;

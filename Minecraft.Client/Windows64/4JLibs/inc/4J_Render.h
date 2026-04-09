@@ -4,6 +4,11 @@
 #include <cstdlib>
 #include <vulkan/vulkan.h>
 
+#ifndef _LCEMP_D3D11_RECT_DEFINED
+#define _LCEMP_D3D11_RECT_DEFINED
+typedef struct D3D11_RECT { long left; long top; long right; long bottom; } D3D11_RECT;
+#endif
+
 class ImageFileBuffer 
 {
 public:
@@ -35,12 +40,15 @@ typedef uint8_t BYTE;
 typedef uint32_t DWORD;
 #endif
 
+#ifndef _XSOCIAL_PREVIEWIMAGE_DEFINED
+#define _XSOCIAL_PREVIEWIMAGE_DEFINED
 typedef struct _XSOCIAL_PREVIEWIMAGE {
     BYTE *pBytes;
     DWORD Pitch;
     DWORD Width;
     DWORD Height;
 } XSOCIAL_PREVIEWIMAGE, *PXSOCIAL_PREVIEWIMAGE;
+#endif
 
 class C4JRender
 {
@@ -69,6 +77,7 @@ public:
 	void DoScreenGrabOnNextPresent();
 	void Present();
 	void Clear(int flags, VkRect2D *pRect = nullptr);
+	void Clear(int flags, D3D11_RECT *pRect);
 	void SetClearColour(const float colourRGBA[4]);
 	bool IsWidescreen();
 	bool IsHiDef();

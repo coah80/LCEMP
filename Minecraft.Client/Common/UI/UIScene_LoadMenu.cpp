@@ -1,16 +1,16 @@
 #include "stdafx.h"
 #include "UI.h"
 #include "UIScene_LoadMenu.h"
-#include "..\..\Minecraft.h"
-#include "..\..\TexturePackRepository.h"
-#include "..\..\Options.h"
-#include "..\..\MinecraftServer.h"
-#include "..\..\..\Minecraft.World\LevelSettings.h"
-#include "..\..\..\Minecraft.World\StringHelpers.h"
+#include "../../Minecraft.h"
+#include "../../TexturePackRepository.h"
+#include "../../Options.h"
+#include "../../MinecraftServer.h"
+#include "../../../Minecraft.World/LevelSettings.h"
+#include "../../../Minecraft.World/StringHelpers.h"
 #if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
-#include "Common\Network\Sony\SonyHttp.h"
+#include "Common/Network/Sony/SonyHttp.h"
 #endif
-#include "..\..\DLCTexturePack.h"
+#include "../../DLCTexturePack.h"
 #if defined(__ORBIS__) || defined(__PSVITA__)
 #include <ces.h>
 #endif
@@ -202,10 +202,14 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 #elif defined(_DURANGO) 
 		// Already utf16 on durango
 		memcpy(u16Message,params->saveDetails->UTF16SaveFilename, MAX_SAVEFILENAME_LENGTH);
-#elif defined(_WINDOWS64)
+#elif defined(_WINDOWS64) && defined(_WIN32)
 		MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
 			params->saveDetails->UTF8SaveFilename, MAX_SAVEFILENAME_LENGTH,
 			(wchar_t *)u16Message, MAX_SAVEFILENAME_LENGTH);
+#elif !defined(__ORBIS__) && !defined(__PSVITA__)
+		{
+			mbstowcs((wchar_t *)u16Message, params->saveDetails->UTF8SaveFilename, MAX_SAVEFILENAME_LENGTH);
+		}
 #else // __ORBIS__
 		{
 			SceCesUcsContext Context;
@@ -1341,7 +1345,7 @@ int UIScene_LoadMenu::LoadDataComplete(void *pParam)
 #endif
 			else
 			{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 				DWORD dwLocalUsersMask = CGameNetworkManager::GetLocalPlayerMask(ProfileManager.GetPrimaryPad());
 				StartGameFromSave(pClass, dwLocalUsersMask);
 #else

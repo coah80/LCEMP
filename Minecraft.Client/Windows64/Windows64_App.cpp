@@ -1,14 +1,14 @@
 ﻿#include "stdafx.h"
-#include "..\Common\Consoles_App.h"
-#include "..\User.h"
-#include "..\..\Minecraft.Client\Minecraft.h"
-#include "..\..\Minecraft.Client\MinecraftServer.h"
-#include "..\..\Minecraft.Client\PlayerList.h"
-#include "..\..\Minecraft.Client\ServerPlayer.h"
-#include "..\..\Minecraft.World\Level.h"
-#include "..\..\Minecraft.World\LevelSettings.h"
-#include "..\..\Minecraft.World\BiomeSource.h"
-#include "..\..\Minecraft.World\LevelType.h"
+#include "../Common/Consoles_App.h"
+#include "../User.h"
+#include "../../Minecraft.Client/Minecraft.h"
+#include "../../Minecraft.Client/MinecraftServer.h"
+#include "../../Minecraft.Client/PlayerList.h"
+#include "../../Minecraft.Client/ServerPlayer.h"
+#include "../../Minecraft.World/Level.h"
+#include "../../Minecraft.World/LevelSettings.h"
+#include "../../Minecraft.World/BiomeSource.h"
+#include "../../Minecraft.World/LevelType.h"
 
 CConsoleMinecraftApp app;
 
@@ -27,8 +27,12 @@ void CConsoleMinecraftApp::StoreLaunchData()
 }
 void CConsoleMinecraftApp::ExitGame()
 {
+#ifdef _WIN32
 	extern HWND g_hWnd;
 	PostMessage(g_hWnd, WM_CLOSE, 0, 0);
+#else
+	exit(0);
+#endif
 }
 void CConsoleMinecraftApp::FatalLoadError()
 {

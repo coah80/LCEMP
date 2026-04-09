@@ -1,59 +1,441 @@
 ﻿#include "stdafx.h"
 
 #include "SoundEngine.h"
-#include "..\Consoles_App.h"
-#include "..\..\MultiplayerLocalPlayer.h"
-#include "..\..\..\Minecraft.World\net.minecraft.world.level.h"
-#include "..\..\Minecraft.World\leveldata.h"
-#include "..\..\Minecraft.World\mth.h"
-#include "..\..\TexturePackRepository.h"
-#include "..\..\DLCTexturePack.h"
-#include "Common\DLC\DLCAudioFile.h"
+#include "../Consoles_App.h"
+#include "../../MultiplayerLocalPlayer.h"
+#include "../../../Minecraft.World/net.minecraft.world.level.h"
+#include "../../Minecraft.World/leveldata.h"
+#include "../../Minecraft.World/mth.h"
+#include "../../TexturePackRepository.h"
+#include "../../DLCTexturePack.h"
+#include "Common/DLC/DLCAudioFile.h"
 
 #ifdef __PSVITA__
 #include <audioout.h>
 #endif
 
-#ifdef _WINDOWS64
-#include "..\..\Minecraft.Client\Windows64\Windows64_App.h"
-#include "..\..\Minecraft.Client\Windows64\Miles\include\imssapi.h"
+#if defined(_WINDOWS64) && defined(_WIN32)
+#include "../../Minecraft.Client/Windows64/Windows64_App.h"
+#ifdef LCEMP_USE_MILES
+#include "../../Minecraft.Client/Windows64/Miles/include/imssapi.h"
+#endif
 #endif
 
 #ifdef __ORBIS__
 #include <audioout.h>
-//#define __DISABLE_MILES__			// MGH disabled for now as it crashes if we call sceNpMatching2Initialize
-#endif 
+#endif
 
-// take out Orbis until they are done
-#if defined _XBOX 
+#if !defined(LCEMP_USE_MILES)
 
-SoundEngine::SoundEngine() {}
+#include "miniaudio/miniaudio.h"
+
+static ma_engine g_maEngine;
+static bool g_maInitialized = false;
+static ma_sound g_maStreamSound;
+static bool g_maStreamActive = false;
+
+char SoundEngine::m_szSoundPath[] = {"Sound/"};
+char SoundEngine::m_szMusicPath[] = {"music/"};
+char SoundEngine::m_szRedistName[] = {""};
+
+char *SoundEngine::m_szStreamFileA[eStream_Max] = {
+	"calm1", "calm2", "calm3",
+	"hal1", "hal2", "hal3", "hal4",
+	"nuance1", "nuance2",
+#ifndef _XBOX
+	"creative1", "creative2", "creative3", "creative4", "creative5", "creative6",
+	"menu1", "menu2", "menu3", "menu4",
+#endif
+	"piano1", "piano2", "piano3",
+	"nether1", "nether2", "nether3", "nether4",
+	"the_end_dragon_alive", "the_end_end",
+	"11", "13", "blocks", "cat", "chirp", "far",
+	"mall", "mellohi", "stal", "strad", "ward", "where_are_we_now"
+};
+
+SoundEngine::SoundEngine()
+{
+	random = new Random();
+	m_hStream = 0;
+	m_StreamState = eMusicStreamState_Idle;
+	m_iMusicDelay = 0;
+	m_validListenerCount = 0;
+	m_bHeardTrackA = NULL;
+	m_bSystemMusicPlaying = false;
+	m_MasterMusicVolume = 1.0f;
+	m_MasterEffectsVolume = 1.0f;
+
+	SetStreamingSounds(eStream_Overworld_Calm1, eStream_Overworld_piano3,
+		eStream_Nether1, eStream_Nether4,
+		eStream_end_dragon, eStream_end_end,
+		eStream_CD_1);
+
+	m_musicID = getMusicID(LevelData::DIMENSION_OVERWORLD);
+
+	m_StreamingAudioInfo.bIs3D = false;
+	m_StreamingAudioInfo.x = 0;
+	m_StreamingAudioInfo.y = 0;
+	m_StreamingAudioInfo.z = 0;
+	m_StreamingAudioInfo.volume = 1;
+	m_StreamingAudioInfo.pitch = 1;
+
+	memset(CurrentSoundsPlaying, 0, sizeof(int) * (eSoundType_MAX + eSFX_MAX));
+	memset(m_ListenerA, 0, sizeof(AUDIO_LISTENER) * XUSER_MAX_COUNT);
+}
+
 void SoundEngine::init(Options *pOptions)
 {
+	app.DebugPrintf("---SoundEngine::init (miniaudio)\n");
+	if (g_maInitialized) return;
+
+	ma_engine_config cfg = ma_engine_config_init();
+	cfg.channels = 2;
+	cfg.sampleRate = 44100;
+
+	if (ma_engine_init(&cfg, &g_maEngine) != MA_SUCCESS) {
+		app.DebugPrintf("miniaudio engine init failed\n");
+		return;
+	}
+	g_maInitialized = true;
+	app.DebugPrintf("---SoundEngine::init (miniaudio) ok\n");
+}
+
+void SoundEngine::destroy()
+{
+	if (g_maStreamActive) {
+		ma_sound_uninit(&g_maStreamSound);
+		g_maStreamActive = false;
+	}
+	if (g_maInitialized) {
+		ma_engine_uninit(&g_maEngine);
+		g_maInitialized = false;
+	}
 }
 
 void SoundEngine::tick(shared_ptr<Mob> *players, float a)
 {
+	int listenerCount = 0;
+	if (players) {
+		for (int i = 0; i < MAX_LOCAL_PLAYERS; i++) {
+			if (players[i] != NULL) {
+				F32 x = players[i]->xo + (players[i]->x - players[i]->xo) * a;
+				F32 y = players[i]->yo + (players[i]->y - players[i]->yo) * a;
+				F32 z = players[i]->zo + (players[i]->z - players[i]->zo) * a;
+
+				float yRot = players[i]->yRotO + (players[i]->yRot - players[i]->yRotO) * a;
+				float yCos = (float)cos(-yRot * Mth::RAD_TO_GRAD - PI);
+				float ySin = (float)sin(-yRot * Mth::RAD_TO_GRAD - PI);
+
+				m_ListenerA[i].bValid = true;
+				m_ListenerA[i].vPosition.x = x;
+				m_ListenerA[i].vPosition.y = y;
+				m_ListenerA[i].vPosition.z = z;
+				m_ListenerA[i].vOrientFront.x = ySin;
+				m_ListenerA[i].vOrientFront.y = 0;
+				m_ListenerA[i].vOrientFront.z = yCos;
+				listenerCount++;
+			} else {
+				m_ListenerA[i].bValid = false;
+			}
+		}
+	}
+
+	if (listenerCount == 0) {
+		m_ListenerA[0].vPosition = {0, 0, 0};
+		m_ListenerA[0].vOrientFront = {0, 0, 1.0f};
+		listenerCount++;
+	}
+	m_validListenerCount = listenerCount;
+
+	if (g_maInitialized && m_validListenerCount >= 1) {
+		for (int i = 0; i < MAX_LOCAL_PLAYERS; i++) {
+			if (m_ListenerA[i].bValid) {
+				ma_engine_listener_set_position(&g_maEngine, 0,
+					m_ListenerA[i].vPosition.x,
+					m_ListenerA[i].vPosition.y,
+					m_ListenerA[i].vPosition.z);
+				ma_engine_listener_set_direction(&g_maEngine, 0,
+					m_ListenerA[i].vOrientFront.x,
+					m_ListenerA[i].vOrientFront.y,
+					m_ListenerA[i].vOrientFront.z);
+				break;
+			}
+		}
+	}
 }
-void SoundEngine::destroy() {}
+
 void SoundEngine::play(int iSound, float x, float y, float z, float volume, float pitch)
 {
-	app.DebugPrintf("PlaySound - %d\n",iSound);
+	if (!g_maInitialized || iSound == -1) return;
+	// miniaudio doesn't have a soundbank system, individual wav/ogg files would be needed
+	// for now just log
+	app.DebugPrintf(6, "SoundEngine::play(%d) at %.1f,%.1f,%.1f vol=%.2f pitch=%.2f\n",
+		iSound, x, y, z, volume, pitch);
 }
-void SoundEngine::playStreaming(const wstring& name, float x, float y , float z, float volume, float pitch, bool bMusicDelay) {}
-void SoundEngine::playUI(int iSound, float volume, float pitch) {}
 
-void SoundEngine::updateMusicVolume(float fVal) {}
-void SoundEngine::updateSoundEffectVolume(float fVal) {}
+void SoundEngine::playUI(int iSound, float volume, float pitch)
+{
+	if (!g_maInitialized) return;
+	app.DebugPrintf(6, "SoundEngine::playUI(%d) vol=%.2f pitch=%.2f\n", iSound, volume, pitch);
+}
+
+void SoundEngine::playStreaming(const wstring& name, float x, float y, float z, float volume, float pitch, bool bMusicDelay)
+{
+	m_StreamingAudioInfo.x = x;
+	m_StreamingAudioInfo.y = y;
+	m_StreamingAudioInfo.z = z;
+	m_StreamingAudioInfo.volume = volume;
+	m_StreamingAudioInfo.pitch = pitch;
+
+	if (m_StreamState == eMusicStreamState_Playing)
+		m_StreamState = eMusicStreamState_Stop;
+	else if (m_StreamState == eMusicStreamState_Opening)
+		m_StreamState = eMusicStreamState_OpeningCancel;
+
+	if (name.empty()) {
+		m_StreamingAudioInfo.bIs3D = false;
+		m_iMusicDelay = random->nextInt(20 * 60 * 3);
+#ifdef _DEBUG
+		m_iMusicDelay = 0;
+#endif
+		Minecraft *pMinecraft = Minecraft::GetInstance();
+		bool playerInEnd = false, playerInNether = false;
+
+		if (pMinecraft) {
+			for (unsigned int i = 0; i < MAX_LOCAL_PLAYERS; i++) {
+				if (pMinecraft->localplayers[i] != NULL) {
+					if (pMinecraft->localplayers[i]->dimension == LevelData::DIMENSION_END)
+						playerInEnd = true;
+					else if (pMinecraft->localplayers[i]->dimension == LevelData::DIMENSION_NETHER)
+						playerInNether = true;
+				}
+			}
+		}
+
+		if (playerInEnd)
+			m_musicID = getMusicID(LevelData::DIMENSION_END);
+		else if (playerInNether)
+			m_musicID = getMusicID(LevelData::DIMENSION_NETHER);
+		else
+			m_musicID = getMusicID(LevelData::DIMENSION_OVERWORLD);
+	} else {
+		m_StreamingAudioInfo.bIs3D = true;
+		m_musicID = getMusicID(name);
+		m_iMusicDelay = 0;
+	}
+}
+
+void SoundEngine::playMusicTick()
+{
+	playMusicUpdate();
+}
+
+void SoundEngine::playMusicUpdate()
+{
+	if (!g_maInitialized) return;
+
+	switch (m_StreamState) {
+	case eMusicStreamState_Idle:
+		if (m_iMusicDelay > 0) { m_iMusicDelay--; return; }
+		if (m_musicID != -1) {
+			char path[512];
+			if (m_musicID < m_iStream_CD_1) {
+				SetIsPlayingStreamingGameMusic(true);
+				SetIsPlayingStreamingCDMusic(false);
+				m_MusicType = eMusicType_Game;
+				snprintf(path, sizeof(path), "%smusic/%s.ogg", m_szMusicPath, m_szStreamFileA[m_musicID]);
+			} else {
+				SetIsPlayingStreamingGameMusic(false);
+				SetIsPlayingStreamingCDMusic(true);
+				m_MusicType = eMusicType_CD;
+				snprintf(path, sizeof(path), "%scds/%s.ogg", m_szMusicPath, m_szStreamFileA[m_musicID]);
+			}
+
+			app.DebugPrintf("Starting streaming (miniaudio) - %s\n", path);
+
+			if (g_maStreamActive) {
+				ma_sound_uninit(&g_maStreamSound);
+				g_maStreamActive = false;
+			}
+
+			if (ma_sound_init_from_file(&g_maEngine, path, MA_SOUND_FLAG_STREAM, NULL, NULL, &g_maStreamSound) == MA_SUCCESS) {
+				ma_sound_set_volume(&g_maStreamSound, m_StreamingAudioInfo.volume * getMasterMusicVolume());
+				ma_sound_start(&g_maStreamSound);
+				g_maStreamActive = true;
+				m_StreamState = eMusicStreamState_Playing;
+			} else {
+				app.DebugPrintf("Failed to open stream: %s\n", path);
+				m_StreamState = eMusicStreamState_Completed;
+			}
+		}
+		break;
+
+	case eMusicStreamState_Stop:
+		if (g_maStreamActive) {
+			ma_sound_stop(&g_maStreamSound);
+			ma_sound_uninit(&g_maStreamSound);
+			g_maStreamActive = false;
+		}
+		SetIsPlayingStreamingCDMusic(false);
+		SetIsPlayingStreamingGameMusic(false);
+		m_StreamState = eMusicStreamState_Idle;
+		break;
+
+	case eMusicStreamState_Playing:
+		if (g_maStreamActive && ma_sound_at_end(&g_maStreamSound)) {
+			ma_sound_uninit(&g_maStreamSound);
+			g_maStreamActive = false;
+			SetIsPlayingStreamingCDMusic(false);
+			SetIsPlayingStreamingGameMusic(false);
+			m_StreamState = eMusicStreamState_Completed;
+		} else if (g_maStreamActive) {
+			float vol = getMasterMusicVolume();
+			ma_sound_set_volume(&g_maStreamSound, m_StreamingAudioInfo.volume * vol);
+		}
+		break;
+
+	case eMusicStreamState_Completed:
+		m_iMusicDelay = random->nextInt(20 * 60 * 3);
+		{
+			Minecraft *pMinecraft = Minecraft::GetInstance();
+			bool playerInEnd = false, playerInNether = false;
+			if (pMinecraft) {
+				for (unsigned int i = 0; i < MAX_LOCAL_PLAYERS; i++) {
+					if (pMinecraft->localplayers[i] != NULL) {
+						if (pMinecraft->localplayers[i]->dimension == LevelData::DIMENSION_END)
+							playerInEnd = true;
+						else if (pMinecraft->localplayers[i]->dimension == LevelData::DIMENSION_NETHER)
+							playerInNether = true;
+					}
+				}
+			}
+			if (playerInEnd) {
+				m_musicID = getMusicID(LevelData::DIMENSION_END);
+				SetIsPlayingEndMusic(true);
+				SetIsPlayingNetherMusic(false);
+			} else if (playerInNether) {
+				m_musicID = getMusicID(LevelData::DIMENSION_NETHER);
+				SetIsPlayingNetherMusic(true);
+				SetIsPlayingEndMusic(false);
+			} else {
+				m_musicID = getMusicID(LevelData::DIMENSION_OVERWORLD);
+				SetIsPlayingNetherMusic(false);
+				SetIsPlayingEndMusic(false);
+			}
+		}
+		m_StreamState = eMusicStreamState_Idle;
+		break;
+
+	default:
+		break;
+	}
+}
+
+void SoundEngine::updateMusicVolume(float fVal) { m_MasterMusicVolume = fVal; }
+void SoundEngine::updateSystemMusicPlaying(bool isPlaying) { m_bSystemMusicPlaying = isPlaying; }
+void SoundEngine::updateSoundEffectVolume(float fVal) { m_MasterEffectsVolume = fVal; }
 
 void SoundEngine::add(const wstring& name, File *file) {}
 void SoundEngine::addMusic(const wstring& name, File *file) {}
 void SoundEngine::addStreaming(const wstring& name, File *file) {}
-char *SoundEngine::ConvertSoundPathToName(const wstring& name, bool bConvertSpaces) { return NULL; }
 bool SoundEngine::isStreamingWavebankReady() { return true; }
-void SoundEngine::playMusicTick() {};
 
-#else
+void SoundEngine::SetStreamingSounds(int iOverworldMin, int iOverWorldMax, int iNetherMin, int iNetherMax, int iEndMin, int iEndMax, int iCD1)
+{
+	m_iStream_Overworld_Min = iOverworldMin;
+	m_iStream_Overworld_Max = iOverWorldMax;
+	m_iStream_Nether_Min = iNetherMin;
+	m_iStream_Nether_Max = iNetherMax;
+	m_iStream_End_Min = iEndMin;
+	m_iStream_End_Max = iEndMax;
+	m_iStream_CD_1 = iCD1;
+
+	if (m_bHeardTrackA) delete[] m_bHeardTrackA;
+	m_bHeardTrackA = new bool[iEndMax + 1];
+	memset(m_bHeardTrackA, 0, sizeof(bool) * (iEndMax + 1));
+}
+
+void SoundEngine::updateMiles() {}
+
+int SoundEngine::GetRandomishTrack(int iStart, int iEnd)
+{
+	bool bAllTracksHeard = true;
+	for (int i = iStart; i <= iEnd; i++) {
+		if (!m_bHeardTrackA[i]) { bAllTracksHeard = false; break; }
+	}
+	if (bAllTracksHeard) {
+		for (int i = iStart; i <= iEnd; i++) m_bHeardTrackA[i] = false;
+	}
+	int iVal = iStart;
+	for (int i = 0; i <= ((iEnd - iStart) / 2); i++) {
+		iVal = random->nextInt((iEnd - iStart) + 1) + iStart;
+		if (!m_bHeardTrackA[iVal]) { m_bHeardTrackA[iVal] = true; break; }
+	}
+	return iVal;
+}
+
+int SoundEngine::getMusicID(int iDomain)
+{
+	Minecraft *pMinecraft = Minecraft::GetInstance();
+	if (pMinecraft == NULL)
+		return GetRandomishTrack(m_iStream_Overworld_Min, m_iStream_Overworld_Max);
+
+	switch (iDomain) {
+	case LevelData::DIMENSION_END:
+		return (pMinecraft->skins && pMinecraft->skins->isUsingDefaultSkin())
+			? m_iStream_End_Min
+			: GetRandomishTrack(m_iStream_End_Min, m_iStream_End_Max);
+	case LevelData::DIMENSION_NETHER:
+		return GetRandomishTrack(m_iStream_Nether_Min, m_iStream_Nether_Max);
+	default:
+		return GetRandomishTrack(m_iStream_Overworld_Min, m_iStream_Overworld_Max);
+	}
+}
+
+int SoundEngine::getMusicID(const wstring& name)
+{
+	char *SoundName = (char *)ConvertSoundPathToName(name, true);
+	int iCD = 0;
+	for (int i = 0; i < 12; i++) {
+		if (strcmp(SoundName, m_szStreamFileA[i + eStream_CD_1]) == 0) {
+			iCD = i;
+			break;
+		}
+	}
+	return iCD + m_iStream_CD_1;
+}
+
+float SoundEngine::getMasterMusicVolume()
+{
+	return m_bSystemMusicPlaying ? 0.0f : m_MasterMusicVolume;
+}
+
+char *SoundEngine::ConvertSoundPathToName(const wstring& name, bool bConvertSpaces)
+{
+	static char buf[256];
+	for (unsigned int i = 0; i < name.length() && i < 255; i++) {
+		wchar_t c = name[i];
+		if (c == '.') c = '/';
+		if (bConvertSpaces && c == ' ') c = '_';
+		buf[i] = (char)c;
+	}
+	buf[name.length() < 255 ? name.length() : 255] = 0;
+	return buf;
+}
+
+int SoundEngine::OpenStreamThreadProc(void* lpParameter) { return 0; }
+
+#ifdef _DEBUG
+void SoundEngine::GetSoundName(char *szSoundName, int iSound)
+{
+	strcpy(szSoundName, "Minecraft/");
+	wstring name = wchSoundNames[iSound];
+	char *SoundName = ConvertSoundPathToName(name);
+	strcat(szSoundName, SoundName);
+}
+#endif
+
+#else // LCEMP_USE_MILES defined
 
 #ifdef _WINDOWS64
 char SoundEngine::m_szSoundPath[]={"Durango\\Sound\\"};
@@ -1644,9 +2026,7 @@ char *SoundEngine::ConvertSoundPathToName(const wstring& name, bool bConvertSpac
 	return buf;
 }
 
-#endif
-
-
+#if defined(LCEMP_USE_MILES) && (defined(_WIN32) || defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__))
 F32 AILCALLBACK custom_falloff_function (HSAMPLE   S, 
 										 F32       distance,
 										 F32       rolloff_factor,
@@ -1654,9 +2034,6 @@ F32 AILCALLBACK custom_falloff_function (HSAMPLE   S,
 										 F32       max_dist)
 {
 	F32 result;
-
-	// This is now emulating the linear fall-off function that we used on the Xbox 360. The parameter which is passed as "max_dist" is the only one actually used,
-	// and is generally used as CurveDistanceScaler is used on XACT on the Xbox. A special value of 10000.0f is passed for thunder, which has no attenuation
 
 	if( max_dist == 10000.0f )
 	{
@@ -1669,3 +2046,6 @@ F32 AILCALLBACK custom_falloff_function (HSAMPLE   S,
 
 	return result;
 }
+#endif
+
+#endif // LCEMP_USE_MILES

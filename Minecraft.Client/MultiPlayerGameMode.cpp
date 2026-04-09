@@ -6,13 +6,13 @@
 #include "Minecraft.h"
 #include "ClientConnection.h"
 #include "LevelRenderer.h"
-#include "Common\Network\GameNetworkManager.h"
-#include "..\Minecraft.World\net.minecraft.world.level.h"
-#include "..\Minecraft.World\net.minecraft.world.item.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.player.h"
-#include "..\Minecraft.World\net.minecraft.world.level.tile.h"
-#include "..\Minecraft.World\net.minecraft.world.inventory.h"
-#include "..\Minecraft.World\net.minecraft.h"
+#include "Common/Network/GameNetworkManager.h"
+#include "../Minecraft.World/net.minecraft.world.level.h"
+#include "../Minecraft.World/net.minecraft.world.item.h"
+#include "../Minecraft.World/net.minecraft.world.entity.player.h"
+#include "../Minecraft.World/net.minecraft.world.level.tile.h"
+#include "../Minecraft.World/net.minecraft.world.inventory.h"
+#include "../Minecraft.World/net.minecraft.h"
 
 MultiPlayerGameMode::MultiPlayerGameMode(Minecraft *minecraft, ClientConnection *connection)
 {
@@ -77,7 +77,7 @@ bool MultiPlayerGameMode::destroyBlock(int x, int y, int z, int face)
 
 	if (oldTile == NULL) return false;
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	// https://github.com/LCEMP/LCEMP
 	if (g_NetworkManager.IsHost())
 	{

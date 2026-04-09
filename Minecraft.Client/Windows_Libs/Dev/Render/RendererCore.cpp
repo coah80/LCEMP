@@ -43,7 +43,6 @@ std::mutex Renderer::totalAllocMutex;
 
 uint32_t Renderer::s_auiWidths[]  = { 1920, 512, 256, 128, 64, 0 };
 uint32_t Renderer::s_auiHeights[] = { 1080, 512, 256, 128, 64 };
-VkFormat Renderer::textureFormats[] = { VK_FORMAT_R8G8B8A8_UNORM };
 int Renderer::totalAlloc = 0;
 
 static const unsigned int kVertexBufferSize = 0x100000; // 1 MB
@@ -384,7 +383,9 @@ void Renderer::SetupRenderPass()
     rpInfo.pDependencies   = &dependency;
 
     VkResult result = vkCreateRenderPass(m_device, &rpInfo, nullptr, &m_renderPass);
-    assert(result == VK_SUCCESS);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "vkCreateRenderPass failed with VkResult %d\n", (int)result);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +409,9 @@ void Renderer::SetupFramebuffers()
         fbInfo.layers          = 1;
 
         VkResult result = vkCreateFramebuffer(m_device, &fbInfo, nullptr, &m_swapchainFramebuffers[i]);
-        assert(result == VK_SUCCESS);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "vkCreateFramebuffer[%d] failed with VkResult %d\n", (int)i, (int)result);
+        }
     }
 }
 
@@ -721,6 +724,7 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
     m_currentFrame   = 0;
     m_renderPassActive = false;
     m_debugMessenger   = VK_NULL_HANDLE;
+    reservedRendererDword1 = 0;
 
     // -----------------------------------------------------------------------
     // 1. Create VkInstance
@@ -732,7 +736,7 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
         appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
         appInfo.pEngineName        = "4J";
         appInfo.engineVersion      = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion         = VK_API_VERSION_1_2;
+        appInfo.apiVersion         = VK_API_VERSION_1_0;
 
         // Required extensions from GLFW
         uint32_t glfwExtCount = 0;
@@ -740,11 +744,31 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
 
         std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtCount);
 
+#ifdef __APPLE__
+        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+#endif
+
         std::vector<const char *> validationLayers;
 
 #ifndef NDEBUG
-        validationLayers.push_back("VK_LAYER_KHRONOS_validation");
-        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        uint32_t layerCount = 0;
+        vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+        std::vector<VkLayerProperties> availableLayers(layerCount);
+        vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+        bool hasValidation = false;
+        for (auto &layer : availableLayers) {
+            if (strcmp(layer.layerName, "VK_LAYER_KHRONOS_validation") == 0) {
+                hasValidation = true;
+                break;
+            }
+        }
+        if (hasValidation) {
+            validationLayers.push_back("VK_LAYER_KHRONOS_validation");
+            extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        } else {
+            fprintf(stderr, "Validation layers not found, skipping\n");
+        }
 #endif
 
         VkInstanceCreateInfo createInfo = {};
@@ -754,9 +778,22 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
         createInfo.ppEnabledExtensionNames = extensions.data();
         createInfo.enabledLayerCount       = static_cast<uint32_t>(validationLayers.size());
         createInfo.ppEnabledLayerNames     = validationLayers.data();
+#ifdef __APPLE__
+        createInfo.flags                   = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
 
         VkResult result = vkCreateInstance(&createInfo, nullptr, &m_instance);
-        assert(result == VK_SUCCESS);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "vkCreateInstance failed with VkResult %d\n", (int)result);
+            createInfo.enabledLayerCount = 0;
+            createInfo.ppEnabledLayerNames = nullptr;
+            result = vkCreateInstance(&createInfo, nullptr, &m_instance);
+            if (result != VK_SUCCESS) {
+                fprintf(stderr, "vkCreateInstance retry failed with VkResult %d\n", (int)result);
+                return;
+            }
+        }
+        fprintf(stderr, "vkCreateInstance ok\n");
     }
 
     // -----------------------------------------------------------------------
@@ -786,7 +823,11 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
     // -----------------------------------------------------------------------
     {
         VkResult result = glfwCreateWindowSurface(m_instance, (GLFWwindow *)windowHandle, nullptr, &m_surface);
-        assert(result == VK_SUCCESS);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "glfwCreateWindowSurface failed with VkResult %d\n", (int)result);
+            return;
+        }
+        fprintf(stderr, "Window surface created ok\n");
     }
 
     // -----------------------------------------------------------------------
@@ -864,22 +905,39 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
             queueCreateInfos.push_back(queueInfo);
         }
 
-        const char *deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+        const char *deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME
+#ifdef __APPLE__
+            , "VK_KHR_portability_subset"
+#endif
+        };
+
+        VkPhysicalDeviceFeatures supportedFeatures = {};
+        vkGetPhysicalDeviceFeatures(m_physicalDevice, &supportedFeatures);
 
         VkPhysicalDeviceFeatures deviceFeatures = {};
-        deviceFeatures.fillModeNonSolid = VK_TRUE;
-        deviceFeatures.wideLines        = VK_TRUE;
+        if (supportedFeatures.fillModeNonSolid)
+            deviceFeatures.fillModeNonSolid = VK_TRUE;
+        if (supportedFeatures.wideLines)
+            deviceFeatures.wideLines = VK_TRUE;
 
         VkDeviceCreateInfo deviceInfo = {};
         deviceInfo.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         deviceInfo.queueCreateInfoCount    = static_cast<uint32_t>(queueCreateInfos.size());
         deviceInfo.pQueueCreateInfos       = queueCreateInfos.data();
         deviceInfo.pEnabledFeatures        = &deviceFeatures;
+#ifdef __APPLE__
+        deviceInfo.enabledExtensionCount   = 2;
+#else
         deviceInfo.enabledExtensionCount   = 1;
+#endif
         deviceInfo.ppEnabledExtensionNames = deviceExtensions;
 
         VkResult result = vkCreateDevice(m_physicalDevice, &deviceInfo, nullptr, &m_device);
-        assert(result == VK_SUCCESS);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "vkCreateDevice failed with VkResult %d\n", (int)result);
+            return;
+        }
+        fprintf(stderr, "vkCreateDevice ok\n");
 
         vkGetDeviceQueue(m_device, m_graphicsQueueFamily, 0, &m_graphicsQueue);
         vkGetDeviceQueue(m_device, m_presentQueueFamily, 0, &m_presentQueue);
@@ -895,7 +953,10 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
         allocatorInfo.instance       = m_instance;
 
         VkResult result = vmaCreateAllocator(&allocatorInfo, &m_allocator);
-        assert(result == VK_SUCCESS);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "vmaCreateAllocator failed with VkResult %d\n", (int)result);
+            return;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -986,7 +1047,11 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
         swapInfo.oldSwapchain   = VK_NULL_HANDLE;
 
         VkResult result = vkCreateSwapchainKHR(m_device, &swapInfo, nullptr, &m_swapchain);
-        assert(result == VK_SUCCESS);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "vkCreateSwapchainKHR failed with VkResult %d\n", (int)result);
+            return;
+        }
+        fprintf(stderr, "Swapchain created ok\n");
 
         // Retrieve swapchain images
         vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr);
@@ -1071,19 +1136,27 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
     // -----------------------------------------------------------------------
     // 10. Setup sub-systems
     // -----------------------------------------------------------------------
+    fprintf(stderr, "Vulkan init complete, setting up subsystems...\n");
     SetupRenderPass();
+    fprintf(stderr, "  RenderPass ok\n");
     SetupFramebuffers();
+    fprintf(stderr, "  Framebuffers ok\n");
     SetupShaders();
+    fprintf(stderr, "  Shaders ok\n");
     SetupDescriptorLayouts();
+    fprintf(stderr, "  DescriptorLayouts ok\n");
     SetupSyncObjects();
+    fprintf(stderr, "  SyncObjects ok\n");
     SetupIndexBuffers();
+    fprintf(stderr, "  IndexBuffers ok\n");
     SetupUniformBuffers();
+    fprintf(stderr, "  UniformBuffers ok\n");
 
     // -----------------------------------------------------------------------
     // 11. Context for the main thread
     // -----------------------------------------------------------------------
     InitialiseContext(true);
-
+    fprintf(stderr, "  Context ok\n");
     #ifdef ENABLE_PROFILING
     MicroProfileOnThreadCreate("MainRenderThread");
     MicroProfileSetEnableAllGroups(true);
@@ -1109,6 +1182,7 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
     reservedRendererDword3 = 0;
     m_bShouldScreenGrabNextFrame = false;
     m_bSuspended = false;
+    fprintf(stderr, "  Command system ok\n");
 
     // -----------------------------------------------------------------------
     // 13. Textures
@@ -1120,7 +1194,7 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
     // Create default 1×1 white texture
     unsigned char whitePixel[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
     TextureData(1, 1, whitePixel, 0, C4JRender::TEXTURE_FORMAT_RxGyBzAw);
-
+    fprintf(stderr, "  Textures ok\n");
     // -----------------------------------------------------------------------
     // 14. Dynamic vertex buffer (host-visible, persistently mapped)
     // -----------------------------------------------------------------------
@@ -1158,15 +1232,14 @@ void Renderer::Initialise(void *windowHandle, uint32_t width, uint32_t height)
     StateSetViewport(C4JRender::VIEWPORT_TYPE_FULLSCREEN);
     StateSetVertexTextureUV(0.0f, 0.0f);
     TextureBindVertex(-1);
+    fprintf(stderr, "Renderer::Initialise complete\n");
 }
-
-// ---------------------------------------------------------------------------
-// StartFrame
 // ---------------------------------------------------------------------------
 void Renderer::StartFrame()
 {
     PROFILER_SCOPE("Renderer::StartFrame", "StartFrame", MP_MAGENTA)
 
+    if (!m_device || !m_swapchain) return;
     // Wait for the previous frame using this slot to finish
     vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
     vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
@@ -1261,6 +1334,7 @@ void Renderer::Present()
 {
     PROFILER_SCOPE("Renderer::Present", "Present", MP_MAGENTA)
 
+    if (!m_device || !m_swapchain) return;
     VkCommandBuffer cmd = m_drawCommandBuffers[m_currentFrame];
 
     // End the render pass
@@ -1368,6 +1442,22 @@ void Renderer::Clear(int flags, VkRect2D *pRect)
 
     activeVertexType = static_cast<uint32_t>(-1);
     activePixelType  = static_cast<uint32_t>(-1);
+}
+
+void Renderer::Clear(int flags, D3D11_RECT *pRect)
+{
+    if (!pRect) { Clear(flags, (VkRect2D*)nullptr); return; }
+    VkRect2D vkRect;
+    vkRect.offset.x = (int32_t)pRect->left;
+    vkRect.offset.y = (int32_t)pRect->top;
+    vkRect.extent.width  = (uint32_t)(pRect->right - pRect->left);
+    vkRect.extent.height = (uint32_t)(pRect->bottom - pRect->top);
+    Clear(flags, &vkRect);
+}
+
+void Renderer::Clear(int flags)
+{
+    Clear(flags, (VkRect2D*)nullptr);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,15 +1,15 @@
 #include "stdafx.h"
 #include <string>
 #include <unordered_map>
-#include "..\..\Minecraft.h"
-#include "..\..\MultiplayerLocalPlayer.h"
+#include "../../Minecraft.h"
+#include "../../MultiplayerLocalPlayer.h"
 #include "Tutorial.h"
 #include "TutorialConstraints.h"
 #include "ChoiceTask.h"
-#include "..\..\..\Minecraft.World\Material.h"
+#include "../../../Minecraft.World/Material.h"
 
-#ifdef _WINDOWS64
-#include "..\..\KeyboardMouseInput.h"
+#if defined(_WINDOWS64) && defined(_WIN32)
+#include "../../KeyboardMouseInput.h"
 
 static int ActionToVK(int action)
 {
@@ -66,7 +66,7 @@ bool ChoiceTask::isCompleted()
 		if( pMinecraft->localplayers[tutorial->getPad()]->isUnderLiquid(Material::water) ) return false;
 
 		int xboxPad = pMinecraft->player->GetXboxPad();
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 		if(!m_bConfirmMappingComplete &&
 			(InputManager.GetValue(xboxPad, m_iConfirmMapping) > 0
 				|| g_KBMInput.IsKeyDown(ActionToVK(m_iConfirmMapping))))
@@ -76,7 +76,7 @@ bool ChoiceTask::isCompleted()
 		{
 			m_bConfirmMappingComplete = true;
 		}
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 		if(!m_bCancelMappingComplete &&
 			(InputManager.GetValue(xboxPad, m_iCancelMapping) > 0
 				|| g_KBMInput.IsKeyDown(ActionToVK(m_iCancelMapping))))

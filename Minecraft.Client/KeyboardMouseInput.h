@@ -1,6 +1,27 @@
 #pragma once
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#ifndef VK_SPACE
+#define VK_SPACE    0x20
+#define VK_LSHIFT   0xA0
+#define VK_LCONTROL 0xA2
+#define VK_TAB      0x09
+#define VK_RETURN   0x0D
+#define VK_BACK     0x08
+#define VK_ESCAPE   0x1B
+#define VK_F3       0x72
+#define VK_F4       0x73
+#define VK_F5       0x74
+#define VK_UP       0x26
+#define VK_DOWN     0x28
+#define VK_LEFT     0x25
+#define VK_RIGHT    0x27
+#define VK_PRIOR    0x21
+#define VK_NEXT     0x22
+#endif
+#endif
 
 class KeyboardMouseInput
 {

@@ -4,14 +4,91 @@
 #include <string>
 #include <functional>
 
-#include "..\..\Minecraft.Client\SkinBox.h"
+#ifndef _WIN32
+#include <cstdint>
+#include <mutex>
+#ifndef ULONGLONG
+typedef uint64_t ULONGLONG;
+#endif
+#ifndef LONGLONG
+typedef int64_t LONGLONG;
+#endif
+#ifndef SIZE_T
+typedef size_t SIZE_T;
+#endif
+#ifndef ULONG_PTR
+typedef uintptr_t ULONG_PTR;
+#endif
+#ifndef VOID
+#define VOID void
+#endif
+#ifndef CONST
+#define CONST const
+#endif
+#ifndef PBYTE
+typedef uint8_t* PBYTE;
+#endif
+#if !defined(FILETIME) && !defined(_FILETIME_DEFINED)
+#define _FILETIME_DEFINED
+typedef struct _FILETIME { uint32_t dwLowDateTime; uint32_t dwHighDateTime; } FILETIME;
+#endif
+#ifndef InitializeCriticalSectionAndSpinCount
+#define InitializeCriticalSectionAndSpinCount(cs, sc) ((void)0)
+#endif
+#ifndef InitializeCriticalSection
+#define InitializeCriticalSection(cs) ((void)0)
+#endif
+#ifndef TryEnterCriticalSection
+inline BOOL TryEnterCriticalSection(CRITICAL_SECTION* cs) { return cs->try_lock() ? TRUE : FALSE; }
+#endif
+#ifndef EnterCriticalSection
+inline void EnterCriticalSection(CRITICAL_SECTION* cs) { cs->lock(); }
+#define EnterCriticalSection(cs) EnterCriticalSection(cs)
+#endif
+#ifndef LeaveCriticalSection
+inline void LeaveCriticalSection(CRITICAL_SECTION* cs) { cs->unlock(); }
+#define LeaveCriticalSection(cs) LeaveCriticalSection(cs)
+#endif
+#ifndef DeleteCriticalSection
+#define DeleteCriticalSection(cs) ((void)0)
+#endif
+#ifndef MAXULONG_PTR
+#define MAXULONG_PTR ((ULONG_PTR)~((ULONG_PTR)0))
+#endif
+#ifndef PAGE_READWRITE
+#define PAGE_READWRITE 0x04
+#endif
+typedef struct _MEMORYSTATUS {
+    DWORD dwLength;
+    DWORD dwMemoryLoad;
+    SIZE_T dwTotalPhys;
+    SIZE_T dwAvailPhys;
+    SIZE_T dwTotalPageFile;
+    SIZE_T dwAvailPageFile;
+    SIZE_T dwTotalVirtual;
+    SIZE_T dwAvailVirtual;
+} MEMORYSTATUS;
+inline void GlobalMemoryStatus(MEMORYSTATUS* ms) { memset(ms, 0, sizeof(*ms)); }
+#endif
+
+#include "../../Minecraft.Client/SkinBox.h"
 
 
 #include <vector>
 
 #define MULTITHREAD_ENABLE
 
+// C++17 std::byte conflicts with our typedef when 'using namespace std' is present
+#ifdef __cplusplus
+#if __cplusplus >= 201703L
+#define byte unsigned char
+#else
 typedef unsigned char byte;
+#endif
+#else
+typedef unsigned char byte;
+#endif
+
 
 #ifndef XUSER_INDEX_ANY
 const int XUSER_INDEX_ANY = 255;
@@ -38,8 +115,8 @@ const int MINECRAFT_NET_MAX_PLAYERS = 8;
 #include <net.h>
 #include <np/np_npid.h>
 #include <user_service.h>
-#include "..\..\Minecraft.Client\Orbis\Orbis_PlayerUID.h"
-#include "..\..\Minecraft.Client\Orbis\Network\SQRNetworkManager_Orbis.h"
+#include "../../Minecraft.Client/Orbis/Orbis_PlayerUID.h"
+#include "../../Minecraft.Client/Orbis/Network/SQRNetworkManager_Orbis.h"
 typedef SQRNetworkManager_Orbis::SessionID SessionID;
 typedef SQRNetworkManager_Orbis::PresenceSyncInfo INVITE_INFO;
 
@@ -49,8 +126,8 @@ typedef SQRNetworkManager_Orbis::PresenceSyncInfo INVITE_INFO;
 #include <netex/libnetctl.h>
 #include <assert.h>
 #include <stdlib.h>
-#include "..\..\Minecraft.Client\PS3\PS3_PlayerUID.h"
-#include "..\..\Minecraft.Client\PS3\Network\SQRNetworkManager_PS3.h"
+#include "../../Minecraft.Client/PS3/PS3_PlayerUID.h"
+#include "../../Minecraft.Client/PS3/Network/SQRNetworkManager_PS3.h"
 typedef SQRNetworkManager::SessionID SessionID;
 typedef SQRNetworkManager::PresenceSyncInfo INVITE_INFO;
 
@@ -58,15 +135,15 @@ typedef SQRNetworkManager::PresenceSyncInfo INVITE_INFO;
 #include <np.h>
 #include <assert.h>
 #include <stdlib.h>
-#include "..\..\Minecraft.Client\PSVita\PSVita_PlayerUID.h"
-#include "..\..\Minecraft.Client\PSVita\Network\SQRNetworkManager_Vita.h"
-#include "..\..\Minecraft.Client\PSVita\Network\SQRNetworkManager_AdHoc_Vita.h"
+#include "../../Minecraft.Client/PSVita/PSVita_PlayerUID.h"
+#include "../../Minecraft.Client/PSVita/Network/SQRNetworkManager_Vita.h"
+#include "../../Minecraft.Client/PSVita/Network/SQRNetworkManager_AdHoc_Vita.h"
 typedef SQRNetworkManager_Vita::SessionID SessionID;
 typedef SQRNetworkManager_Vita::PresenceSyncInfo INVITE_INFO;
 
 #elif defined _DURANGO
-#include "..\..\Minecraft.Client\Durango\4JLibs\inc\4J_Profile.h"
-#include "..\..\Minecraft.Client\Durango\Network\DQRNetworkManager.h"
+#include "../../Minecraft.Client/Durango/4JLibs/inc/4J_Profile.h"
+#include "../../Minecraft.Client/Durango/Network/DQRNetworkManager.h"
 typedef ULONGLONG SessionID;
 typedef ULONGLONG GameSessionUID;
 typedef DQRNetworkManager::SessionInfo INVITE_INFO;
@@ -94,7 +171,7 @@ typedef struct _XUIDC* HXUIDC;
 
 bool IsEqualXUID(PlayerUID a, PlayerUID b);
 
-using namespace std;
+// using namespace std; -- removed, causes byte ambiguity with std::byte in C++17
 
 // Temporary implementation of lock free stack with quite a bit more locking than you might expect
 template <typename T> class XLockFreeStack
@@ -138,6 +215,9 @@ private:
 void XMemCpy(void *a, const void *b, size_t s);
 void XMemSet(void *a, int t, size_t s);
 void XMemSet128(void *a, int t, size_t s);
+#ifndef MEM_LARGE_PAGES
+#define MEM_LARGE_PAGES 0x20000000
+#endif
 void *XPhysicalAlloc(SIZE_T a, ULONG_PTR  b, ULONG_PTR c, DWORD d);
 void XPhysicalFree(void *a);
 
@@ -262,6 +342,10 @@ typedef struct {
 
 typedef struct _XOVERLAPPED {
 } XOVERLAPPED, *PXOVERLAPPED;
+
+typedef struct _XSOCIAL_PREVIEWIMAGE {
+} XSOCIAL_PREVIEWIMAGE;
+#define _XSOCIAL_PREVIEWIMAGE_DEFINED
 
 typedef struct _XSESSION_SEARCHRESULT {
 } XSESSION_SEARCHRESULT, *PXSESSION_SEARCHRESULT;

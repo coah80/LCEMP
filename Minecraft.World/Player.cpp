@@ -33,10 +33,10 @@
 #include "Player.h"
 #include "ParticleTypes.h"
 
-#include "..\Minecraft.Client\Textures.h"
+#include "../Minecraft.Client/Textures.h"
 
-#include "..\Minecraft.Client\LocalPlayer.h"
-#include "..\Minecraft.Client\HumanoidModel.h"
+#include "../Minecraft.Client/LocalPlayer.h"
+#include "../Minecraft.Client/HumanoidModel.h"
 #include "SoundTypes.h"
 
 
@@ -2562,8 +2562,10 @@ int Player::hash_fnct(const shared_ptr<Player> k)
 	return (int)boost::hash_value( k->name ); // 4J Stu - Names are completely unique?
 #elif _MSC_VER >= 1900
 	return (int)std::hash<wstring>{}( k->name ); // 4J Stu - Names are completely unique?
-#else
+#elif defined(_MSC_VER)
 	return (int)stdext::hash_value( k->name ); // 4J Stu - Names are completely unique?
+#else
+	return (int)std::hash<wstring>{}( k->name );
 #endif
 }
 

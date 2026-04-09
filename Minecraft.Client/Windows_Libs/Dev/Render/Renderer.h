@@ -32,6 +32,11 @@ SOFTWARE.
 #include <mutex>
 #include <array>
 
+#ifndef _LCEMP_D3D11_RECT_DEFINED
+#define _LCEMP_D3D11_RECT_DEFINED
+typedef struct D3D11_RECT { long left; long top; long right; long bottom; } D3D11_RECT;
+#endif
+
 #include <vulkan/vulkan.h>
 #include "vk_mem_alloc.h"
 
@@ -230,6 +235,8 @@ public:
     void DoScreenGrabOnNextPresent();
     void Present();
     void Clear(int flags, VkRect2D *pRect);
+    void Clear(int flags, D3D11_RECT *pRect);
+    void Clear(int flags);
     void SetClearColour(const float colourRGBA[4]);
     bool IsWidescreen();
     bool IsHiDef();

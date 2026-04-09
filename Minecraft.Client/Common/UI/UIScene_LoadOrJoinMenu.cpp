@@ -2,21 +2,21 @@
 #include "UI.h"
 #include "UIScene_LoadOrJoinMenu.h"
 
-#include "..\..\..\Minecraft.World\StringHelpers.h"
-#include "..\..\..\Minecraft.World\net.minecraft.world.item.h"
-#include "..\..\..\Minecraft.World\net.minecraft.world.level.h"
-#include "..\..\..\Minecraft.World\net.minecraft.world.level.chunk.storage.h"
-#include "..\..\..\Minecraft.World\ConsoleSaveFile.h"
-#include "..\..\..\Minecraft.World\ConsoleSaveFileOriginal.h"
-#include "..\..\..\Minecraft.World\ConsoleSaveFileSplit.h"
-#include "..\..\ProgressRenderer.h"
-#include "..\..\MinecraftServer.h"
-#include "..\..\TexturePackRepository.h"
-#include "..\..\TexturePack.h"
-#include "..\Network\SessionInfo.h"
+#include "../../../Minecraft.World/StringHelpers.h"
+#include "../../../Minecraft.World/net.minecraft.world.item.h"
+#include "../../../Minecraft.World/net.minecraft.world.level.h"
+#include "../../../Minecraft.World/net.minecraft.world.level.chunk.storage.h"
+#include "../../../Minecraft.World/ConsoleSaveFile.h"
+#include "../../../Minecraft.World/ConsoleSaveFileOriginal.h"
+#include "../../../Minecraft.World/ConsoleSaveFileSplit.h"
+#include "../../ProgressRenderer.h"
+#include "../../MinecraftServer.h"
+#include "../../TexturePackRepository.h"
+#include "../../TexturePack.h"
+#include "../Network/SessionInfo.h"
 #if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
-#include "Common\Network\Sony\SonyHttp.h"
-#include "Common\Network\Sony\SonyRemoteStorage.h"
+#include "Common/Network/Sony/SonyHttp.h"
+#include "Common/Network/Sony/SonyRemoteStorage.h"
 #endif
 #if defined(__ORBIS__) || defined(__PSVITA__)
 #include <ces.h>
@@ -656,7 +656,7 @@ void UIScene_LoadOrJoinMenu::tick()
 #ifdef _DURANGO
                 // Already utf16 on durango
                 memcpy(u16Message, m_saveDetails[m_iRequestingThumbnailId].UTF16SaveFilename, MAX_SAVEFILENAME_LENGTH);
-#elif defined(_WINDOWS64)
+#elif defined(_WINDOWS64) && defined(_WIN32)
                 int result = ::MultiByteToWideChar(
                     CP_UTF8,                // convert from UTF-8
                     MB_ERR_INVALID_CHARS,   // error on invalid chars
@@ -666,6 +666,8 @@ void UIScene_LoadOrJoinMenu::tick()
                     (wchar_t *)u16Message,               // destination buffer
                     MAX_SAVEFILENAME_LENGTH                // size of destination buffer, in WCHAR's
                     );
+#elif !defined(__PS3__) && !defined(__ORBIS__) && !defined(__PSVITA__)
+                mbstowcs((wchar_t *)u16Message, m_saveDetails[m_iRequestingThumbnailId].UTF8SaveFilename, MAX_SAVEFILENAME_LENGTH);
 #else
 #ifdef __PS3
                 size_t srcmax,dstmax;

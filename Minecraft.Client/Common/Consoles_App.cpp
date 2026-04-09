@@ -2,64 +2,64 @@
 #include "stdafx.h"
 
 #include <time.h>
-#include "..\..\Minecraft.World\Recipy.h"
-#include "..\..\Minecraft.Client\Options.h"
-#include "..\..\Minecraft.World\AABB.h"
-#include "..\..\Minecraft.World\Vec3.h"
-#include "..\MinecraftServer.h"
-#include "..\MultiPlayerLevel.h"
-#include "..\GameRenderer.h"
-#include "..\ProgressRenderer.h"
-#include "..\..\Minecraft.Client\LevelRenderer.h"
-#include "..\..\Minecraft.Client\MobSkinMemTextureProcessor.h"
-#include "..\..\Minecraft.Client\Minecraft.h"
-#include "..\ClientConnection.h"
-#include "..\MultiPlayerLocalPlayer.h"
-#include "..\..\Minecraft.Client\LocalPlayer.h"
-#include "..\..\Minecraft.World\Player.h"
-#include "..\..\Minecraft.World\Inventory.h"
-#include "..\..\Minecraft.World\Level.h"
-#include "..\..\Minecraft.World\FurnaceTileEntity.h"
-#include "..\..\Minecraft.World\Container.h"
-#include "..\..\Minecraft.World\DispenserTileEntity.h"
-#include "..\..\Minecraft.World\SignTileEntity.h"
-#include "..\..\Minecraft.Client\StatsCounter.h"
-#include "..\GameMode.h"
-#include "..\Xbox\Social\SocialManager.h"
-#include "Tutorial\TutorialMode.h"
+#include "../../Minecraft.World/Recipy.h"
+#include "../../Minecraft.Client/Options.h"
+#include "../../Minecraft.World/AABB.h"
+#include "../../Minecraft.World/Vec3.h"
+#include "../MinecraftServer.h"
+#include "../MultiPlayerLevel.h"
+#include "../GameRenderer.h"
+#include "../ProgressRenderer.h"
+#include "../../Minecraft.Client/LevelRenderer.h"
+#include "../../Minecraft.Client/MobSkinMemTextureProcessor.h"
+#include "../../Minecraft.Client/Minecraft.h"
+#include "../ClientConnection.h"
+#include "../MultiPlayerLocalPlayer.h"
+#include "../../Minecraft.Client/LocalPlayer.h"
+#include "../../Minecraft.World/Player.h"
+#include "../../Minecraft.World/Inventory.h"
+#include "../../Minecraft.World/Level.h"
+#include "../../Minecraft.World/FurnaceTileEntity.h"
+#include "../../Minecraft.World/Container.h"
+#include "../../Minecraft.World/DispenserTileEntity.h"
+#include "../../Minecraft.World/SignTileEntity.h"
+#include "../../Minecraft.Client/StatsCounter.h"
+#include "../GameMode.h"
+#include "../Xbox/Social/SocialManager.h"
+#include "Tutorial/TutorialMode.h"
 #if defined _XBOX || defined _WINDOWS64
-#include "..\..\Minecraft.Client\Xbox\XML\ATGXmlParser.h"
-#include "..\..\Minecraft.Client\Xbox\XML\xmlFilesCallback.h"
+#include "../../Minecraft.Client/Xbox/XML/ATGXmlParser.h"
+#include "../../Minecraft.Client/Xbox/XML/xmlFilesCallback.h"
 #endif
 #include "Minecraft_Macros.h"
-#include "..\..\Minecraft.Client\PlayerList.h"
-#include "..\..\Minecraft.Client\ServerPlayer.h"
-#include "GameRules\ConsoleGameRules.h"
-#include "GameRules\ConsoleSchematicFile.h"
-#include "..\..\Minecraft.World\InputOutputStream.h"
-#include "..\..\Minecraft.World\LevelSettings.h"
-#include "..\User.h"
-#include "..\..\Minecraft.World\LevelData.h"
-#include "..\..\Minecraft.World\net.minecraft.world.entity.player.h"
-#include "..\..\Minecraft.Client\EntityRenderDispatcher.h"
-#include "..\..\Minecraft.World\compression.h"
-#include "..\TexturePackRepository.h"
-#include "..\DLCTexturePack.h"
-#include "DLC\DLCPack.h"
-#include "..\StringTable.h"
+#include "../../Minecraft.Client/PlayerList.h"
+#include "../../Minecraft.Client/ServerPlayer.h"
+#include "GameRules/ConsoleGameRules.h"
+#include "GameRules/ConsoleSchematicFile.h"
+#include "../../Minecraft.World/InputOutputStream.h"
+#include "../../Minecraft.World/LevelSettings.h"
+#include "../User.h"
+#include "../../Minecraft.World/LevelData.h"
+#include "../../Minecraft.World/net.minecraft.world.entity.player.h"
+#include "../../Minecraft.Client/EntityRenderDispatcher.h"
+#include "../../Minecraft.World/compression.h"
+#include "../TexturePackRepository.h"
+#include "../DLCTexturePack.h"
+#include "DLC/DLCPack.h"
+#include "../StringTable.h"
 #ifndef _XBOX
-#include "..\ArchiveFile.h"
+#include "../ArchiveFile.h"
 #endif
-#include "..\Minecraft.h"
+#include "../Minecraft.h"
 #ifdef _XBOX
-#include "..\Xbox\GameConfig\Minecraft.spa.h"
-#include "..\Xbox\Network\NetworkPlayerXbox.h"
-#include "XUI\XUI_TextEntry.h"
-#include "XUI\XUI_XZP_Icons.h"
-#include "XUI\XUI_PauseMenu.h"
+#include "../Xbox/GameConfig/Minecraft.spa.h"
+#include "../Xbox/Network/NetworkPlayerXbox.h"
+#include "XUI/XUI_TextEntry.h"
+#include "XUI/XUI_XZP_Icons.h"
+#include "XUI/XUI_PauseMenu.h"
 #else
-#include "UI\UI.h"
-#include "UI\UIScene_PauseMenu.h"
+#include "UI/UI.h"
+#include "UI/UIScene_PauseMenu.h"
 #endif
 #ifdef __PS3__
 #include <sys/tty.h>
@@ -68,7 +68,7 @@
 #include <save_data_dialog.h>
 #endif
 
-#include "..\Common\Leaderboards\LeaderboardManager.h"
+#include "../Common/Leaderboards/LeaderboardManager.h"
 
 //CMinecraftApp app;
 unsigned int CMinecraftApp::m_uiLastSignInData = 0;
@@ -1215,7 +1215,7 @@ void CMinecraftApp::ActionGameSettings(int iPad,eGameSetting eVal)
 			// ucGamma range is 0-100, UpdateGamma is 0 - 32768
 			float fVal=((float)GameSettingsA[iPad]->ucGamma)*327.68f;
 			RenderManager.UpdateGamma((unsigned short)fVal);
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 			extern void Windows64_UpdateGamma(unsigned short);
 			Windows64_UpdateGamma((unsigned short)fVal);
 #endif
@@ -4150,6 +4150,8 @@ void CMinecraftApp::loadMediaArchive()
 	mediapath = L"Common\\Media\\MediaDurango.arc";
 #elif __PSVITA__
 	mediapath = L"Common\\Media\\MediaPSVita.arc";
+#else
+	mediapath = L"Common/Media/MediaWindows64.arc";
 #endif
 
 	if (!mediapath.empty()) 
@@ -4207,7 +4209,7 @@ void CMinecraftApp::loadStringTable()
 		delete m_stringTable;
 	}
 	wstring localisationFile = L"languages.loc";
-	if (m_mediaArchive->hasFile(localisationFile))
+	if (m_mediaArchive && m_mediaArchive->hasFile(localisationFile))
 	{
 		byteArray locFile = m_mediaArchive->getFile(localisationFile);
 		m_stringTable = new StringTable(locFile.data, locFile.length);
@@ -8917,7 +8919,8 @@ int CMinecraftApp::getArchiveFileSize(const wstring &filename)
 	{
 		return tPack->getArchiveFile()->getFileSize(filename);
 	}
-	else return m_mediaArchive->getFileSize(filename);
+	if (!m_mediaArchive) return -1;
+	return m_mediaArchive->getFileSize(filename);
 }
 
 bool CMinecraftApp::hasArchiveFile(const wstring &filename)
@@ -8926,7 +8929,8 @@ bool CMinecraftApp::hasArchiveFile(const wstring &filename)
 	Minecraft *pMinecraft = Minecraft::GetInstance();
 	if(pMinecraft && pMinecraft->skins) tPack = pMinecraft->skins->getSelected();
 	if(tPack && tPack->hasData() && tPack->getArchiveFile() && tPack->getArchiveFile()->hasFile(filename)) return true;
-	else return m_mediaArchive->hasFile(filename);
+	if (!m_mediaArchive) return false;
+	return m_mediaArchive->hasFile(filename);
 }
 
 byteArray CMinecraftApp::getArchiveFile(const wstring &filename)
@@ -8938,7 +8942,8 @@ byteArray CMinecraftApp::getArchiveFile(const wstring &filename)
 	{
 		return tPack->getArchiveFile()->getFile(filename);
 	}
-	else return m_mediaArchive->getFile(filename);
+	if (!m_mediaArchive) return byteArray(0);
+	return m_mediaArchive->getFile(filename);
 }
 
 // DLC

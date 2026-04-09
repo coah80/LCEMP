@@ -41,6 +41,7 @@ ipch/
 # ===========================================
 cmake-build-debug
 cmake-build-release
+build/
 
 # ===========================================
 # Archives & packaged binaries
@@ -210,3 +211,16 @@ Minecraft.Client/Common/Network/Sony/
 
 Minecraft.Server/
 build_dedicated/
+
+# ===========================================
+# Ghidra project databases (too large for GitHub)
+# ===========================================
+*.gbf
+*.gpr
+*.rep/
+
+# macOS junk
+.DS_Store
+
+# Stale local copies
+**/Users/cole/

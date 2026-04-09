@@ -1,5 +1,12 @@
 #pragma once
 
+#ifndef PDWORD
+typedef DWORD* PDWORD;
+#endif
+#ifndef PBOOL
+typedef BOOL* PBOOL;
+#endif
+
 
 typedef enum _XBACKGROUND_DOWNLOAD_MODE
 {

@@ -1,25 +1,39 @@
 #pragma once
 
-#include "..\..\..\Minecraft.World\SoundTypes.h"
+#include "../../../Minecraft.World/SoundTypes.h"
 
 #ifdef _XBOX
 
 #elif defined (__PS3__)
 #undef __in
 #undef __out
-#include "..\..\PS3\Miles\include\mss.h"
+#include "../../PS3/Miles/include/mss.h"
 #elif defined (__PSVITA__)
-#include "..\..\PSVITA\Miles\include\mss.h"
+#include "../../PSVITA/Miles/include/mss.h"
 #elif defined _DURANGO
 // 4J Stu - Temp define to get Miles to link, can likely be removed when we get a new version of Miles
 #define _SEKRIT
-#include "..\..\Durango\Miles\include\mss.h"
+#include "../../Durango/Miles/include/mss.h"
 #elif defined _WINDOWS64
-#include "..\..\windows64\Miles\include\mss.h"
+#ifdef LCEMP_USE_MILES
+#include "../../Windows64/Miles/include/mss.h"
+#else
+typedef void* HDIGDRIVER;
+typedef void* HSTREAM;
+typedef void* H3DSAMPLE;
+typedef void* H3DPOBJECT;
+typedef void* HSAMPLE;
+typedef void* HMSOUNDBANK;
+typedef unsigned int U32;
+typedef int S32;
+typedef float F32;
+typedef unsigned long long U64;
+typedef long long S64;
+#endif
 #else // PS4
 // 4J Stu - Temp define to get Miles to link, can likely be removed when we get a new version of Miles
 #define _SEKRIT2
-#include "..\..\Orbis\Miles\include\mss.h"
+#include "../../Orbis/Miles/include/mss.h"
 #endif
 
 typedef struct

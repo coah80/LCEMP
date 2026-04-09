@@ -11,23 +11,23 @@
 #include "PendingConnection.h"
 #include "PlayerConnection.h"
 #include "EntityTracker.h"
-#include "..\Minecraft.World\net.minecraft.world.level.storage.h"
-#include "..\Minecraft.World\net.minecraft.world.level.dimension.h"
-#include "..\Minecraft.World\ArrayWithLength.h"
-#include "..\Minecraft.World\net.minecraft.network.packet.h"
-#include "..\Minecraft.World\net.minecraft.network.h"
-#include "..\Minecraft.World\Pos.h"
-#include "..\Minecraft.World\ProgressListener.h"
-#include "..\Minecraft.World\HellRandomLevelSource.h"
-#include "..\Minecraft.World\net.minecraft.world.phys.h"
-#include "..\Minecraft.World\net.minecraft.world.item.h"
-#include "..\Minecraft.World\net.minecraft.world.level.storage.h"
-#include "..\Minecraft.World\net.minecraft.world.level.saveddata.h"
-#include "..\Minecraft.World\JavaMath.h"
+#include "../Minecraft.World/net.minecraft.world.level.storage.h"
+#include "../Minecraft.World/net.minecraft.world.level.dimension.h"
+#include "../Minecraft.World/ArrayWithLength.h"
+#include "../Minecraft.World/net.minecraft.network.packet.h"
+#include "../Minecraft.World/net.minecraft.network.h"
+#include "../Minecraft.World/Pos.h"
+#include "../Minecraft.World/ProgressListener.h"
+#include "../Minecraft.World/HellRandomLevelSource.h"
+#include "../Minecraft.World/net.minecraft.world.phys.h"
+#include "../Minecraft.World/net.minecraft.world.item.h"
+#include "../Minecraft.World/net.minecraft.world.level.storage.h"
+#include "../Minecraft.World/net.minecraft.world.level.saveddata.h"
+#include "../Minecraft.World/JavaMath.h"
 #if defined(_XBOX) || defined(_WINDOWS64)
-#include "Xbox\Network\NetworkPlayerXbox.h"
+#include "Xbox/Network/NetworkPlayerXbox.h"
 #elif defined(__PS3__) || defined(__ORBIS__)
-#include "Common\Network\Sony\NetworkPlayerSony.h"
+#include "Common/Network/Sony/NetworkPlayerSony.h"
 #endif
 
 // 4J - this class is fairly substantially altered as there didn't seem any point in porting code for banning, whitelisting, ops etc.
@@ -52,7 +52,7 @@ PlayerList::PlayerList(MinecraftServer *server)
 
     //int viewDistance = server->settings->getInt(L"view-distance", 10);
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
     maxPlayers = MINECRAFT_NET_MAX_PLAYERS;
 #else
     maxPlayers = server->settings->getInt(L"max-players", 20);
@@ -100,7 +100,7 @@ void PlayerList::placeNewPlayer(Connection *connection, shared_ptr<ServerPlayer>
 			}
 		}
 #endif
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 		if (networkPlayer != NULL && !networkPlayer->IsLocal())
 		{
 			NetworkPlayerXbox *nxp = (NetworkPlayerXbox *)networkPlayer;
@@ -459,7 +459,7 @@ void PlayerList::remove(shared_ptr<ServerPlayer> player)
 
 shared_ptr<ServerPlayer> PlayerList::getPlayerForLogin(PendingConnection *pendingConnection, const wstring& userName, PlayerUID xuid, PlayerUID onlineXuid)
 {
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
     if (players.size() >= (unsigned int)MINECRAFT_NET_MAX_PLAYERS)
     {
         pendingConnection->disconnect(DisconnectPacket::eDisconnect_ServerFull);
@@ -478,7 +478,7 @@ shared_ptr<ServerPlayer> PlayerList::getPlayerForLogin(PendingConnection *pendin
 	player->setXuid( xuid ); // 4J Added
 	player->setOnlineXuid( onlineXuid ); // 4J Added
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	{
 		INetworkPlayer *np = pendingConnection->connection->getSocket()->getPlayer();
 		if (np != NULL)

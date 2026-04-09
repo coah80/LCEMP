@@ -4,38 +4,38 @@
 #endif // __PS3__
 
 #ifdef __PS3__
-#include "PS3\Sentient\SentientManager.h"
+#include "PS3/Sentient/SentientManager.h"
 #include "StatsCounter.h"
-#include "PS3\Social\SocialManager.h"
+#include "PS3/Social/SocialManager.h"
 #include <libsn.h>
 #include <libsntuner.h>
 #elif defined _DURANGO
-#include "Durango\Sentient\SentientManager.h"
+#include "Durango/Sentient/SentientManager.h"
 #include "StatsCounter.h"
-#include "Durango\Social\SocialManager.h"
-#include "Durango\Sentient\DynamicConfigurations.h"
-#include "Durango\DurangoExtras\xcompress.h"
+#include "Durango/Social/SocialManager.h"
+#include "Durango/Sentient/DynamicConfigurations.h"
+#include "Durango/DurangoExtras/xcompress.h"
 #elif defined _WINDOWS64
-#include "Windows64\Sentient\SentientManager.h"
+#include "Windows64/Sentient/SentientManager.h"
 #include "StatsCounter.h"
-#include "Windows64\Social\SocialManager.h"
-#include "Windows64\Sentient\DynamicConfigurations.h"
+#include "Windows64/Social/SocialManager.h"
+#include "Windows64/Sentient/DynamicConfigurations.h"
 #elif defined __PSVITA__
-#include "PSVita\Sentient\SentientManager.h"
+#include "PSVita/Sentient/SentientManager.h"
 #include "StatsCounter.h"
-#include "PSVita\Social\SocialManager.h"
-#include "PSVita\Sentient\DynamicConfigurations.h"
+#include "PSVita/Social/SocialManager.h"
+#include "PSVita/Sentient/DynamicConfigurations.h"
 #include <libperf.h>
 #else
-#include "Orbis\Sentient\SentientManager.h"
+#include "Orbis/Sentient/SentientManager.h"
 #include "StatsCounter.h"
-#include "Orbis\Social\SocialManager.h"
-#include "Orbis\Sentient\DynamicConfigurations.h"
+#include "Orbis/Social/SocialManager.h"
+#include "Orbis/Sentient/DynamicConfigurations.h"
 #include <perf.h>
 #endif
 
 #if !defined(__PS3__) && !defined(__ORBIS__) && !defined(__PSVITA__)
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 //C4JStorage StorageManager;
 C_4JProfile ProfileManager;
 #endif
@@ -185,15 +185,19 @@ D3DXVECTOR3::D3DXVECTOR3() {}
 D3DXVECTOR3::D3DXVECTOR3(float x,float y,float z) : x(x), y(y), z(z) {}
 D3DXVECTOR3& D3DXVECTOR3::operator += ( CONST D3DXVECTOR3& add ) { x += add.x; y += add.y; z += add.z; return *this; }
 
-#include "Windows64\Network\WinsockNetLayer.h"
+#if defined(_WINDOWS64) && defined(_WIN32)
+#include "Windows64/Network/WinsockNetLayer.h"
+#endif
 
 BYTE IQNetPlayer::GetSmallId() { return m_smallId; }
 void IQNetPlayer::SendData(IQNetPlayer *player, const void *pvData, DWORD dwDataSize, DWORD dwFlags)
 {
+#if defined(_WINDOWS64) && defined(_WIN32)
 	if (WinsockNetLayer::IsActive())
 	{
 		WinsockNetLayer::SendToSmallId(player->m_smallId, pvData, dwDataSize);
 	}
+#endif
 }
 bool IQNetPlayer::IsSameSystem(IQNetPlayer *player) { return (this == player) || (!m_isRemote && !player->m_isRemote); }
 DWORD IQNetPlayer::GetSendQueueSize( IQNetPlayer *player, DWORD dwFlags ) { return 0; }
@@ -205,7 +209,7 @@ static void Win64_BuildSplitName(int iPad, char *outName, int outSize);
 
 PlayerUID IQNetPlayer::GetXuid()
 {
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	if (!m_isRemote)
 	{
 		int idx = (int)(this - &IQNet::m_player[0]);
@@ -592,7 +596,7 @@ DWORD XEnableGuestSignin(BOOL fEnable) { return 0; }
 
 
 /////////////////////////////////////////////// Profile library
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 static void *profileData[4];
 static int profileDataSizePerPlayer = 0;
 static bool s_bProfileIsFullVersion = true;
@@ -720,7 +724,7 @@ void				C_4JProfile::SetPrimaryPlayerChanged(bool bVal) {}
 bool				C_4JProfile::QuerySigninStatus(void) { return true; }
 void				C_4JProfile::GetXUID(int iPad, PlayerUID *pXuid,bool bOnlineXuid)
 {
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	if (iPad == 0)
 	{
 		extern char g_Win64Username[17];
@@ -862,7 +866,7 @@ void				C_4JProfile::SetDebugFullOverride(bool bVal) {s_bProfileIsFullVersion = 
 void				C_4JProfile::ShowProfileCard(int iPad, PlayerUID targetUid) {}
 
 /////////////////////////////////////////////// Storage library
-//#ifdef _WINDOWS64
+//#if defined(_WINDOWS64) && defined(_WIN32)
 #if 0
 C4JStorage::C4JStorage() {}
 void								C4JStorage::Tick() {}

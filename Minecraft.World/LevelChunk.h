@@ -12,6 +12,7 @@ class ChunkSource;
 #include "LightLayer.h"
 #include "Entity.h"
 #include "Level.h"
+#include "TilePos.h"
 
 #define SHARING_ENABLED
 class TileCompressData_SPU;

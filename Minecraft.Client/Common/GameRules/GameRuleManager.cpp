@@ -1,14 +1,14 @@
 #include "stdafx.h"
-#include "..\..\..\Minecraft.World\compression.h"
-#include "..\..\..\Minecraft.World\StringHelpers.h"
-#include "..\..\..\Minecraft.World\File.h"
-#include "..\..\..\Minecraft.World\compression.h"
-#include "..\DLC\DLCPack.h"
-#include "..\DLC\DLCLocalisationFile.h"
-#include "..\DLC\DLCGameRulesFile.h"
-#include "..\DLC\DLCGameRules.h"
-#include "..\DLC\DLCGameRulesHeader.h"
-#include "..\..\StringTable.h"
+#include "../../../Minecraft.World/compression.h"
+#include "../../../Minecraft.World/StringHelpers.h"
+#include "../../../Minecraft.World/File.h"
+#include "../../../Minecraft.World/compression.h"
+#include "../DLC/DLCPack.h"
+#include "../DLC/DLCLocalisationFile.h"
+#include "../DLC/DLCGameRulesFile.h"
+#include "../DLC/DLCGameRules.h"
+#include "../DLC/DLCGameRulesHeader.h"
+#include "../../StringTable.h"
 #include "ConsoleGameRules.h"
 #include "GameRuleManager.h"
 
@@ -660,18 +660,29 @@ void GameRuleManager::loadDefaultGameRules()
 #else // _XBOX
 
 	wstring fpTutorial = L"Tutorial.pck";
-	if(app.getArchiveFileSize(fpTutorial) >= 0)
+	fprintf(stderr, "  [GameRuleManager] checking Tutorial.pck in archive...\n");
+	int tutSize = app.getArchiveFileSize(fpTutorial);
+	fprintf(stderr, "  [GameRuleManager] Tutorial.pck size: %d\n", tutSize);
+	if(tutSize >= 0)
 	{
 		DLCPack *pack = new DLCPack(L"",0xffffffff);
 		DWORD dwFilesProcessed = 0;
+		fprintf(stderr, "  [GameRuleManager] calling readDLCDataFile...\n");
 		if ( app.m_dlcManager.readDLCDataFile(dwFilesProcessed,fpTutorial,pack,true) )
 		{
+			fprintf(stderr, "  [GameRuleManager] readDLCDataFile ok, adding pack...\n");
 			app.m_dlcManager.addPack(pack);
-			m_levelGenerators.getLevelGenerators()->at(0)->setWorldName(app.GetString(IDS_PLAY_TUTORIAL));
-			m_levelGenerators.getLevelGenerators()->at(0)->setDefaultSaveName(app.GetString(IDS_TUTORIALSAVENAME));
+			fprintf(stderr, "  [GameRuleManager] getLevelGenerators...\n");
+			auto* gens = m_levelGenerators.getLevelGenerators();
+			fprintf(stderr, "  [GameRuleManager] gens=%p size=%zu\n", (void*)gens, gens ? gens->size() : 0);
+			if (gens && gens->size() > 0) {
+				gens->at(0)->setWorldName(app.GetString(IDS_PLAY_TUTORIAL));
+				gens->at(0)->setDefaultSaveName(app.GetString(IDS_TUTORIALSAVENAME));
+			}
 		}
 		else delete pack;
 	}
+	fprintf(stderr, "  [GameRuleManager] loadDefaultGameRules done\n");
 	/*StringTable *strings = new StringTable(baStrings.data, baStrings.length);
 	LevelGenerationOptions *lgo = new LevelGenerationOptions();
 	lgo->setGrSource( new JustGrSource() );

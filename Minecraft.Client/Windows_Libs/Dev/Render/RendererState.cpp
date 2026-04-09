@@ -29,54 +29,6 @@ SOFTWARE.
 #include <cmath>
 #include <limits>
 
-// ─── Topology / blend / compare mapping ─────────────────────────────────────
-
-VkPrimitiveTopology Renderer::MapTopology(C4JRender::ePrimitiveType type)
-{
-    switch (type)
-    {
-    case C4JRender::PRIMITIVE_TYPE_TRIANGLE_LIST:  return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    case C4JRender::PRIMITIVE_TYPE_TRIANGLE_STRIP: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-    case C4JRender::PRIMITIVE_TYPE_TRIANGLE_FAN:   return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; // emulated via index buffer
-    case C4JRender::PRIMITIVE_TYPE_QUAD_LIST:      return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; // emulated via index buffer
-    case C4JRender::PRIMITIVE_TYPE_LINE_LIST:      return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-    case C4JRender::PRIMITIVE_TYPE_LINE_STRIP:     return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-    default:                                       return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    }
-}
-
-VkBlendFactor Renderer::MapBlendFactor(int factor)
-{
-    switch (factor)
-    {
-    case GL_ZERO:                    return VK_BLEND_FACTOR_ZERO;
-    case GL_ONE:                     return VK_BLEND_FACTOR_ONE;
-    case GL_SRC_COLOR:               return VK_BLEND_FACTOR_SRC_COLOR;
-    case GL_ONE_MINUS_SRC_COLOR:     return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-    case GL_SRC_ALPHA:               return VK_BLEND_FACTOR_SRC_ALPHA;
-    case GL_ONE_MINUS_SRC_ALPHA:     return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    case GL_DST_ALPHA:               return VK_BLEND_FACTOR_DST_ALPHA;
-    case GL_DST_COLOR:               return VK_BLEND_FACTOR_DST_COLOR;
-    case GL_ONE_MINUS_DST_COLOR:     return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-    case GL_CONSTANT_ALPHA:          return VK_BLEND_FACTOR_CONSTANT_ALPHA;
-    case GL_ONE_MINUS_CONSTANT_ALPHA:return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
-    default:                         return VK_BLEND_FACTOR_ONE;
-    }
-}
-
-VkCompareOp Renderer::MapCompareOp(int func)
-{
-    switch (func)
-    {
-    case GL_EQUAL:   return VK_COMPARE_OP_EQUAL;
-    case GL_LEQUAL:  return VK_COMPARE_OP_LESS_OR_EQUAL;
-    case GL_GREATER: return VK_COMPARE_OP_GREATER;
-    case GL_GEQUAL:  return VK_COMPARE_OP_GREATER_OR_EQUAL;
-    case GL_ALWAYS:  return VK_COMPARE_OP_ALWAYS;
-    default:         return VK_COMPARE_OP_LESS_OR_EQUAL;
-    }
-}
-
 // ─── Sampler cache ──────────────────────────────────────────────────────────
 
 VkSampler Renderer::GetManagedSampler(uint32_t params)

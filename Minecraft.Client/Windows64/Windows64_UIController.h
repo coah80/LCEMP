@@ -1,6 +1,13 @@
 #pragma once
 
-#include "..\Common\UI\UIController.h"
+#include "../Common/UI/UIController.h"
+
+#ifndef _WIN32
+struct ID3D11Device {};
+struct ID3D11DeviceContext {};
+struct ID3D11RenderTargetView {};
+struct ID3D11DepthStencilView {};
+#endif
 
 class ConsoleUIController : public UIController
 {

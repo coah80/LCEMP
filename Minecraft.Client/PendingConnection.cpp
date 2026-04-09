@@ -7,12 +7,12 @@
 #include "ServerLevel.h"
 #include "PlayerList.h"
 #include "MinecraftServer.h"
-#include "..\Minecraft.World\net.minecraft.network.h"
-#include "..\Minecraft.World\pos.h"
-#include "..\Minecraft.World\net.minecraft.world.level.dimension.h"
-#include "..\Minecraft.World\net.minecraft.world.level.storage.h"
-#include "..\Minecraft.World\net.minecraft.world.item.h"
-#include "..\Minecraft.World\SharedConstants.h"
+#include "../Minecraft.World/net.minecraft.network.h"
+#include "../Minecraft.World/pos.h"
+#include "../Minecraft.World/net.minecraft.world.level.dimension.h"
+#include "../Minecraft.World/net.minecraft.world.level.storage.h"
+#include "../Minecraft.World/net.minecraft.world.item.h"
+#include "../Minecraft.World/SharedConstants.h"
 #include "Settings.h"
 // #ifdef __PS3__
 // #include "PS3\Network\NetworkPlayerSony.h"
@@ -20,7 +20,7 @@
 
 Random *PendingConnection::random = new Random();
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 bool g_bRejectDuplicateNames = true;
 #endif
 
@@ -172,7 +172,7 @@ void PendingConnection::handleLogin(shared_ptr<LoginPacket> packet)
 	{
 		disconnect(DisconnectPacket::eDisconnect_Banned);
 	}
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	else if( g_bRejectDuplicateNames )
 	{
 		bool nameTaken = false;

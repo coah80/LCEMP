@@ -1,26 +1,26 @@
 #include "stdafx.h"
 #include "UI.h"
 #include "UIScene_CreateWorldMenu.h"
-#include "..\..\MinecraftServer.h"
-#include "..\..\Minecraft.h"
-#include "..\..\Options.h"
-#include "..\..\TexturePackRepository.h"
-#include "..\..\TexturePack.h"
-#include "..\..\..\Minecraft.World\LevelSettings.h"
-#include "..\..\..\Minecraft.World\StringHelpers.h"
-#include "..\..\..\Minecraft.World\BiomeSource.h"
-#include "..\..\..\Minecraft.World\IntCache.h"
-#include "..\..\..\Minecraft.World\LevelType.h"
-#include "..\..\DLCTexturePack.h"
+#include "../../MinecraftServer.h"
+#include "../../Minecraft.h"
+#include "../../Options.h"
+#include "../../TexturePackRepository.h"
+#include "../../TexturePack.h"
+#include "../../../Minecraft.World/LevelSettings.h"
+#include "../../../Minecraft.World/StringHelpers.h"
+#include "../../../Minecraft.World/BiomeSource.h"
+#include "../../../Minecraft.World/IntCache.h"
+#include "../../../Minecraft.World/LevelType.h"
+#include "../../DLCTexturePack.h"
 
 #ifdef __PSVITA__
-#include "PSVita\Network\SQRNetworkManager_AdHoc_Vita.h"
+#include "PSVita/Network/SQRNetworkManager_AdHoc_Vita.h"
 #endif
 
-#ifdef  _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 
 #include <windows.h>
-#include "Xbox\Resource.h"
+#include "Xbox/Resource.h"
 #endif
 
 #define GAME_CREATE_ONLINE_TIMER_ID 0
@@ -993,7 +993,7 @@ void UIScene_CreateWorldMenu::checkStateAndStartGame()
 #endif
 			else
 			{				
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 				SignInInfo info;
 				info.Func = &UIScene_CreateWorldMenu::StartGame_SignInReturned;
 				info.lpParam = this;
@@ -1362,7 +1362,7 @@ int UIScene_CreateWorldMenu::ConfirmCreateReturned(void *pParam,int iPad,C4JStor
 
 		if(isClientSide && app.IsLocalMultiplayerAvailable())
 		{
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 			UIScene_CreateWorldMenu::StartGame_SignInReturned(pClass, true, ProfileManager.GetPrimaryPad());
 #else
 			//ProfileManager.RequestSignInUI(false, false, false, true, false,&UIScene_CreateWorldMenu::StartGame_SignInReturned, pClass,ProfileManager.GetPrimaryPad());

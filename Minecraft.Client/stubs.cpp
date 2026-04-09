@@ -1,6 +1,6 @@
 #include "stdafx.h"
 
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 #include "KeyboardMouseInput.h"
 
 static const int s_keyToVK[] = {
@@ -92,7 +92,7 @@ bool Mouse::isButtonDown(int button)
 {
 	return g_KBMInput.IsMouseButtonDown(button);
 }
-#endif // _WINDOWS64
+#endif // _WINDOWS64 && _WIN32
 
 void glReadPixels(int,int, int, int, int, int, ByteBuffer *)
 {

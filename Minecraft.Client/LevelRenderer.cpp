@@ -39,30 +39,30 @@
 #include "Lighting.h"
 #include "Options.h"
 #include "MultiPlayerChunkCache.h"
-#include "..\Minecraft.World\ParticleTypes.h"
-#include "..\Minecraft.World\IntCache.h"
-#include "..\Minecraft.World\IntBuffer.h"
-#include "..\Minecraft.World\JavaMath.h"
-#include "..\Minecraft.World\net.minecraft.world.level.h"
-#include "..\Minecraft.World\net.minecraft.world.level.dimension.h"
-#include "..\Minecraft.World\net.minecraft.world.level.tile.h"
-#include "..\Minecraft.World\net.minecraft.world.phys.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.player.h"
-#include "..\Minecraft.World\net.minecraft.world.item.h"
-#include "..\Minecraft.World\System.h"
-#include "..\Minecraft.World\StringHelpers.h"
-#include "..\Minecraft.World\net.minecraft.world.level.chunk.h"
-#include "..\Minecraft.World\net.minecraft.world.entity.projectile.h"
-#include "..\Minecraft.World\net.minecraft.world.h"
+#include "../Minecraft.World/ParticleTypes.h"
+#include "../Minecraft.World/IntCache.h"
+#include "../Minecraft.World/IntBuffer.h"
+#include "../Minecraft.World/JavaMath.h"
+#include "../Minecraft.World/net.minecraft.world.level.h"
+#include "../Minecraft.World/net.minecraft.world.level.dimension.h"
+#include "../Minecraft.World/net.minecraft.world.level.tile.h"
+#include "../Minecraft.World/net.minecraft.world.phys.h"
+#include "../Minecraft.World/net.minecraft.world.entity.player.h"
+#include "../Minecraft.World/net.minecraft.world.item.h"
+#include "../Minecraft.World/System.h"
+#include "../Minecraft.World/StringHelpers.h"
+#include "../Minecraft.World/net.minecraft.world.level.chunk.h"
+#include "../Minecraft.World/net.minecraft.world.entity.projectile.h"
+#include "../Minecraft.World/net.minecraft.world.h"
 #include "MultiplayerLocalPlayer.h"
 #include "MultiPlayerLevel.h"
-#include "..\Minecraft.World\SoundTypes.h"
+#include "../Minecraft.World/SoundTypes.h"
 #include "FrustumCuller.h"
-#include "..\Minecraft.World\BasicTypeContainers.h"
+#include "../Minecraft.World/BasicTypeContainers.h"
 
 #ifdef __PS3__
-#include "PS3\SPU_Tasks\LevelRenderer_cull\LevelRenderer_cull.h"
-#include "PS3\SPU_Tasks\LevelRenderer_FindNearestChunk\LevelRenderer_FindNearestChunk.h"
+#include "PS3/SPU_Tasks/LevelRenderer_cull/LevelRenderer_cull.h"
+#include "PS3/SPU_Tasks/LevelRenderer_FindNearestChunk/LevelRenderer_FindNearestChunk.h"
 #include "C4JSpursJob.h"
 
 static LevelRenderer_cull_DataIn g_cullDataIn[4] __attribute__((__aligned__(16)));
@@ -1941,7 +1941,7 @@ bool LevelRenderer::updateDirtyChunks()
 						{
 							if( (!onlyRebuild) ||
 								globalChunkFlags[ pClipChunk->globalIdx ] & CHUNK_FLAG_COMPILED ||
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 								( distSq < 96 * 96 ) )	// Always rebuild really near things or else building (say) at tower up into empty blocks when we are low on memory will not create render data
 #else
 								( distSq < 20 * 20 ) )	// Always rebuild really near things or else building (say) at tower up into empty blocks when we are low on memory will not create render data

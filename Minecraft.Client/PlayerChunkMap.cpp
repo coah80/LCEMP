@@ -5,11 +5,11 @@
 #include "ServerChunkCache.h"
 #include "ServerPlayer.h"
 #include "MinecraftServer.h"
-#include "..\Minecraft.World\net.minecraft.network.packet.h"
-#include "..\Minecraft.World\net.minecraft.world.level.h"
-#include "..\Minecraft.World\net.minecraft.world.level.tile.h"
-#include "..\Minecraft.World\ArrayWithLength.h"
-#include "..\Minecraft.World\System.h"
+#include "../Minecraft.World/net.minecraft.network.packet.h"
+#include "../Minecraft.World/net.minecraft.world.level.h"
+#include "../Minecraft.World/net.minecraft.world.level.tile.h"
+#include "../Minecraft.World/ArrayWithLength.h"
+#include "../Minecraft.World/System.h"
 #include "PlayerList.h"
 
 PlayerChunkMap::PlayerChunk::PlayerChunk(int x, int z, PlayerChunkMap *pcm) : pos(x,z)
@@ -499,7 +499,7 @@ void PlayerChunkMap::getChunkAndRemovePlayer(int x, int z, shared_ptr<ServerPlay
 // 4J - added - actually create & add player to a playerchunk, if there is one queued for this player.
 void PlayerChunkMap::tickAddRequests(shared_ptr<ServerPlayer> player)
 {
-#ifdef _WINDOWS64
+#if defined(_WINDOWS64) && defined(_WIN32)
 	const int maxPerTick = 10;
 #else
 	const int maxPerTick = 1;

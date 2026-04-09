@@ -1,8 +1,8 @@
 #include "stdafx.h"
 #include "Textures.h"
 #include "AbstractTexturePack.h"
-#include "..\Minecraft.World\InputOutputStream.h"
-#include "..\Minecraft.World\StringHelpers.h"
+#include "../Minecraft.World/InputOutputStream.h"
+#include "../Minecraft.World/StringHelpers.h"
 
 AbstractTexturePack::AbstractTexturePack(DWORD id, File *file, const wstring &name, TexturePack *fallback) : id(id), name(name)
 {
@@ -363,7 +363,11 @@ void AbstractTexturePack::unloadUI()
 
 wstring AbstractTexturePack::getXuiRootPath()
 {
+#ifdef _WIN32
 	const ULONG_PTR c_ModuleHandle = (ULONG_PTR)GetModuleHandle(NULL);
+#else
+	const ULONG_PTR c_ModuleHandle = 0;
+#endif
 
 	// Load new skin
 	const DWORD LOCATOR_SIZE = 256; // Use this to allocate space to hold a ResourceLocator string 

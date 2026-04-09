@@ -1,9 +1,10 @@
 #include "stdafx.h"
+#ifdef _WIN32
 #include "Windows64_UIController.h"
 
 // Temp
-#include "..\Minecraft.h"
-#include "..\Textures.h"
+#include "../Minecraft.h"
+#include "../Textures.h"
 
 #define _ENABLEIGGY
 
@@ -187,3 +188,4 @@ void ConsoleUIController::shutdown()
 	gdraw_D3D11_DestroyContext();
 #endif
 }
+#endif // _WIN32

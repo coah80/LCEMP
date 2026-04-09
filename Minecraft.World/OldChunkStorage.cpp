@@ -67,6 +67,26 @@ File OldChunkStorage::getFile(int x, int z)
 	wchar_t zRadix36[64];
 #if ( defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ )
 	assert(0);	// need a gcc verison of _itow ?
+#elif !defined(_WIN32)
+	auto itow_compat = [](int val, wchar_t* buf, int radix) {
+		char tmp[64];
+		if (radix == 36) {
+			char* p = tmp;
+			int v = (val < 0) ? -val : val;
+			if (v == 0) { *p++ = '0'; }
+			else { while (v) { int d = v % 36; *p++ = (d < 10) ? ('0'+d) : ('a'+d-10); v /= 36; } }
+			if (val < 0) *p++ = '-';
+			*p = 0;
+			int len = (int)(p - tmp);
+			for (int i = 0; i < len; i++) buf[i] = tmp[len-1-i];
+			buf[len] = 0;
+		} else { swprintf(buf, 64, L"%d", val); }
+	};
+	itow_compat(x,xRadix36,36);
+	itow_compat(z,zRadix36,36);
+	swprintf(name,MAX_PATH_SIZE,L"c.%ls.%ls.dat",xRadix36,zRadix36);
+	itow_compat(x & 63,path1,36);
+	itow_compat(z & 63,path2,36);
 #else
 	_itow(x,xRadix36,36);
 	_itow(z,zRadix36,36);
